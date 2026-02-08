@@ -35,11 +35,14 @@ export async function GET(request: NextRequest) {
           .from('sales_data')
           .select('quarter, line_amount_mst')
           .eq('year', currentYear)
-          .range(from, to);
+          .not('quarter', 'is', null);
 
         if (entities.length > 0 && !entities.includes('All')) {
           currentQuery = currentQuery.in('entity', entities);
         }
+
+        // range는 마지막에 적용
+        currentQuery = currentQuery.range(from, to);
 
         const { data, error } = await currentQuery;
         
@@ -80,11 +83,14 @@ export async function GET(request: NextRequest) {
           .from('sales_data')
           .select('quarter, line_amount_mst')
           .eq('year', previousYear)
-          .range(from, to);
+          .not('quarter', 'is', null);
 
         if (entities.length > 0 && !entities.includes('All')) {
           prevQuery = prevQuery.in('entity', entities);
         }
+
+        // range는 마지막에 적용
+        prevQuery = prevQuery.range(from, to);
 
         const { data, error } = await prevQuery;
         
@@ -114,7 +120,7 @@ export async function GET(request: NextRequest) {
     const currentQuarterMap = new Map<string, number>();
     (currentData || []).forEach((row) => {
       const quarter = row.quarter || 'Q1';
-      const amount = parseFloat(row.line_amount_mst || 0);
+      const amount = Number(row.line_amount_mst || 0);
       currentQuarterMap.set(quarter, (currentQuarterMap.get(quarter) || 0) + (isNaN(amount) ? 0 : amount));
     });
 
@@ -122,7 +128,7 @@ export async function GET(request: NextRequest) {
     const prevQuarterMap = new Map<string, number>();
     (prevData || []).forEach((row) => {
       const quarter = row.quarter || 'Q1';
-      const amount = parseFloat(row.line_amount_mst || 0);
+      const amount = Number(row.line_amount_mst || 0);
       prevQuarterMap.set(quarter, (prevQuarterMap.get(quarter) || 0) + (isNaN(amount) ? 0 : amount));
     });
 

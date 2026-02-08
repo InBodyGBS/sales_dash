@@ -208,6 +208,7 @@ export default function EntityDashboardPage() {
             onCountriesChange={setCountries}
             onFGChange={setFG}
             disableEntitySelection={true} // Add this prop to disable entity selection
+            entity={entity} // entity prop 추가하여 해당 entity의 years 가져오기
           />
         </div>
 
@@ -221,7 +222,7 @@ export default function EntityDashboardPage() {
             <>
               {/* Monthly Trend - Full Width for Korot */}
               <div className="grid gap-6 md:grid-cols-1">
-                <MonthlyTrendChart data={monthlyTrend} loading={loading} entity={entity} />
+                <MonthlyTrendChart data={monthlyTrend} loading={loading} entity={entity} currentYear={parseInt(year)} />
               </div>
               {/* Quarterly Comparison and Country Sales */}
               <div className="grid gap-6 md:grid-cols-2">
@@ -237,7 +238,7 @@ export default function EntityDashboardPage() {
           ) : (
             <>
               <div className="grid gap-6 md:grid-cols-2">
-                <MonthlyTrendChart data={monthlyTrend} loading={loading} entity={entity} />
+                <MonthlyTrendChart data={monthlyTrend} loading={loading} entity={entity} currentYear={parseInt(year)} />
                 <QuarterlyComparisonChart
                   data={quarterlyComparison}
                   currentYear={parseInt(year)}

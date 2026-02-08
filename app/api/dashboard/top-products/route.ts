@@ -33,12 +33,14 @@ export async function GET(request: NextRequest) {
           .from('sales_data')
           .select('product_name, product, line_amount_mst, quantity, fg_classification')
           .eq('year', yearInt)
-          .eq('fg_classification', 'FG')
-          .range(from, to);
+          .eq('fg_classification', 'FG');
 
         if (entities.length > 0 && !entities.includes('All')) {
           query = query.in('entity', entities);
         }
+
+        // range는 마지막에 적용
+        query = query.range(from, to);
 
         const { data, error } = await query;
         
@@ -48,12 +50,14 @@ export async function GET(request: NextRequest) {
             let retryQuery = supabase
               .from('sales_data')
               .select('product_name, product, line_amount_mst, quantity')
-              .eq('year', yearInt)
-              .range(from, to);
+              .eq('year', yearInt);
             
             if (entities.length > 0 && !entities.includes('All')) {
               retryQuery = retryQuery.in('entity', entities);
             }
+
+            // range는 마지막에 적용
+            retryQuery = retryQuery.range(from, to);
             
             const { data: retryData, error: retryError } = await retryQuery;
             
@@ -102,8 +106,8 @@ export async function GET(request: NextRequest) {
 
     data.forEach((row) => {
       const product = row.product || row.product_name || 'Unknown';
-      const amount = parseFloat(row.line_amount_mst || 0);
-      const qty = parseFloat(row.quantity || 0);
+      const amount = Number(row.line_amount_mst || 0);
+      const qty = Number(row.quantity || 0);
 
       if (!productMap.has(product)) {
         productMap.set(product, { amount: 0, qty: 0 });

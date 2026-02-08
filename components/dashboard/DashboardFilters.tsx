@@ -27,6 +27,7 @@ interface DashboardFiltersProps {
   onCountriesChange: (countries: string[]) => void;
   onFGChange: (fg: string) => void;
   disableEntitySelection?: boolean;
+  entity?: Entity; // 단일 entity (entity별 대시보드용)
 }
 
 export function DashboardFilters({
@@ -41,25 +42,34 @@ export function DashboardFilters({
   onCountriesChange,
   onFGChange,
   disableEntitySelection = false,
+  entity,
 }: DashboardFiltersProps) {
   const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [availableCountries, setAvailableCountries] = useState<string[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
+    const fetchYears = async () => {
+      try {
+        // entity가 있으면 entity별 years 가져오기, 없으면 전체 years 가져오기
+        // entities 배열이 있고 하나만 있으면 그것을 사용
+        const entityParam = entity || (entities.length === 1 ? entities[0] : null);
+        const url = entityParam ? `/api/years?entity=${entityParam}` : '/api/years';
+        console.log('Fetching years from:', url, 'entity:', entityParam, 'entities:', entities);
+        const res = await fetch(url);
+        const data = await res.json();
+        const years = data.years || [];
+        console.log('Fetched years:', years, 'for entity:', entityParam);
+        setAvailableYears(years);
+      } catch (error) {
+        console.error('Failed to fetch years:', error);
+        setAvailableYears([]);
+      }
+    };
+
     fetchYears();
     fetchCountries();
-  }, []);
-
-  const fetchYears = async () => {
-    try {
-      const res = await fetch('/api/years');
-      const data = await res.json();
-      setAvailableYears(data.years || []);
-    } catch (error) {
-      console.error('Failed to fetch years:', error);
-    }
-  };
+  }, [entity, entities]); // entity 또는 entities가 변경되면 years 다시 가져오기
 
   const fetchCountries = async () => {
     try {
@@ -103,17 +113,19 @@ export function DashboardFilters({
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="year">Year</Label>
-          <Select value={year} onValueChange={onYearChange}>
+          <Select value={year} onValueChange={onYearChange} disabled={availableYears.length === 0}>
             <SelectTrigger id="year">
-              <SelectValue placeholder="Select year" />
+              <SelectValue placeholder={availableYears.length === 0 ? "Loading years..." : "Select year"} />
             </SelectTrigger>
-            <SelectContent>
-              {availableYears.map((y) => (
-                <SelectItem key={y} value={String(y)}>
-                  {y}
-                </SelectItem>
-              ))}
-            </SelectContent>
+            {availableYears.length > 0 && (
+              <SelectContent>
+                {availableYears.map((y) => (
+                  <SelectItem key={y} value={String(y)}>
+                    {y}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            )}
           </Select>
         </div>
 

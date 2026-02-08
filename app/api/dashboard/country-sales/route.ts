@@ -32,12 +32,14 @@ export async function GET(request: NextRequest) {
         let query = supabase
           .from('sales_data')
           .select('country, state, city, entity, line_amount_mst')
-          .eq('year', yearInt)
-          .range(from, to);
+          .eq('year', yearInt);
 
         if (entities.length > 0 && !entities.includes('All')) {
           query = query.in('entity', entities);
         }
+
+        // range는 마지막에 적용
+        query = query.range(from, to);
 
         const { data, error } = await query;
         
@@ -78,7 +80,7 @@ export async function GET(request: NextRequest) {
     data.forEach((row: any) => {
       // Use country if available, otherwise fallback to state, city, or entity
       const country = row.country || row.state || row.city || row.entity || 'Unknown';
-      const amount = parseFloat(row.line_amount_mst || 0);
+      const amount = Number(row.line_amount_mst || 0);
       
       countryMap.set(country, (countryMap.get(country) || 0) + (isNaN(amount) ? 0 : amount));
     });

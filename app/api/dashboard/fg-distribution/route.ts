@@ -31,12 +31,14 @@ export async function GET(request: NextRequest) {
         let query = supabase
           .from('sales_data')
           .select('fg_classification, line_amount_mst')
-          .eq('year', yearInt)
-          .range(from, to);
+          .eq('year', yearInt);
 
         if (entities.length > 0 && !entities.includes('All')) {
           query = query.in('entity', entities);
         }
+
+        // range는 마지막에 적용
+        query = query.range(from, to);
 
         const { data, error } = await query;
         
@@ -82,7 +84,7 @@ export async function GET(request: NextRequest) {
 
     data.forEach((row) => {
       const fg = row.fg_classification || 'NonFG';
-      const amount = parseFloat(row.line_amount_mst || 0);
+      const amount = Number(row.line_amount_mst || 0);
       
       fgMap.set(fg, (fgMap.get(fg) || 0) + (isNaN(amount) ? 0 : amount));
     });

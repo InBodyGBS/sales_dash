@@ -1,7 +1,7 @@
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { formatCurrency, formatNumber, formatKRW, formatCompactCurrency, formatCompactKRW } from '@/lib/utils/formatters';
 import { Entity } from '@/lib/types/sales';
 
@@ -9,17 +9,20 @@ interface MonthlyTrendData {
   month: number;
   amount: number;
   qty: number;
+  prevAmount?: number;
+  prevQty?: number;
 }
 
 interface MonthlyTrendChartProps {
   data: MonthlyTrendData[];
   loading?: boolean;
   entity?: Entity;
+  currentYear?: number;
 }
 
 const monthNames = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
 
-export function MonthlyTrendChart({ data, loading, entity }: MonthlyTrendChartProps) {
+export function MonthlyTrendChart({ data, loading, entity, currentYear }: MonthlyTrendChartProps) {
   const isKRWEntity = entity && ['HQ', 'Healthcare', 'Korot'].includes(entity);
   if (loading) {
     return (
@@ -51,24 +54,49 @@ export function MonthlyTrendChart({ data, loading, entity }: MonthlyTrendChartPr
     );
   }
 
-  // Create a map of existing data by month
-  const dataMap = new Map(
-    data.map((item) => [item.month, { amount: item.amount, qty: item.qty }])
-  );
-
   // Create chart data for all 12 months, filling missing months with 0
   const chartData = monthNames.map((monthName, index) => {
     const month = index + 1;
-    const monthData = dataMap.get(month);
-    return {
+    const monthData = data.find((d) => d.month === month);
+    const currentYearKey = currentYear ? currentYear.toString() : 'current';
+    const prevYearKey = currentYear ? (currentYear - 1).toString() : 'previous';
+    
+    const currentAmount = monthData?.amount ?? 0;
+    const prevAmount = monthData?.prevAmount ?? 0;
+    
+    const chartItem: any = {
       month: monthName,
-      amount: monthData?.amount || 0,
-      qty: monthData?.qty || 0,
+      amount: currentAmount,
+      qty: monthData?.qty ?? 0,
+      prevAmount: prevAmount,
+      prevQty: monthData?.prevQty ?? 0,
     };
+    
+    // 동적 키 추가 - currentYear가 있을 때만
+    if (currentYear) {
+      chartItem[currentYearKey] = currentAmount;
+      chartItem[prevYearKey] = prevAmount;
+    } else {
+      chartItem['current'] = currentAmount;
+      chartItem['previous'] = prevAmount;
+    }
+    
+    return chartItem;
   });
+  
+  // 디버깅: 첫 번째 데이터 확인
+  if (chartData.length > 0 && currentYear) {
+    console.log('MonthlyTrendChart - currentYear:', currentYear);
+    console.log('MonthlyTrendChart - first data item:', chartData[0]);
+    console.log('MonthlyTrendChart - data keys:', Object.keys(chartData[0]));
+    console.log('MonthlyTrendChart - raw data:', data.slice(0, 3));
+  }
 
-  // Calculate max amount for better Y-axis scaling
-  const maxAmount = Math.max(...chartData.map((d) => d.amount), 0);
+  // Calculate max amount for better Y-axis scaling (both current and previous year)
+  const maxAmount = Math.max(
+    ...chartData.flatMap((d) => [d.amount || 0, d.prevAmount || 0]),
+    0
+  );
   const yAxisDomain = [0, maxAmount * 1.1 || 1]; // Add 10% padding, minimum 1 to avoid domain error
 
   return (
@@ -88,7 +116,6 @@ export function MonthlyTrendChart({ data, loading, entity }: MonthlyTrendChartPr
               angle={-45}
               textAnchor="end"
               height={50}
-              label={false}
             />
             {isKRWEntity ? (
               <>
@@ -99,16 +126,37 @@ export function MonthlyTrendChart({ data, loading, entity }: MonthlyTrendChartPr
                   tick={{ fontSize: 12 }}
                 />
                 <Tooltip
-                  formatter={(value: number) => formatKRW(value)}
+                  formatter={(value: number, name: string) => {
+                    if (name === currentYear?.toString() || name === 'current') {
+                      return formatKRW(value);
+                    }
+                    if (name === (currentYear ? (currentYear - 1).toString() : 'previous') || name === 'previous') {
+                      return formatKRW(value);
+                    }
+                    return formatKRW(value);
+                  }}
                 />
+                <Legend />
                 <Line
                   type="monotone"
-                  dataKey="amount"
+                  dataKey={currentYear ? currentYear.toString() : 'amount'}
                   stroke="#3B82F6"
                   strokeWidth={2}
-                  name="Amount"
+                  name={currentYear ? currentYear.toString() : 'Amount'}
                   dot={{ r: 4 }}
+                  connectNulls={true}
                 />
+                {currentYear && (
+                  <Line
+                    type="monotone"
+                    dataKey={(currentYear - 1).toString()}
+                    stroke="#6B7280"
+                    strokeWidth={2}
+                    name={(currentYear - 1).toString()}
+                    dot={{ r: 4 }}
+                    connectNulls={true}
+                  />
+                )}
               </>
             ) : (
               <>
@@ -129,6 +177,12 @@ export function MonthlyTrendChart({ data, loading, entity }: MonthlyTrendChartPr
                 />
                 <Tooltip
                   formatter={(value: number, name: string) => {
+                    if (name === currentYear?.toString() || name === 'current') {
+                      return formatCurrency(value, 'USD');
+                    }
+                    if (name === (currentYear ? (currentYear - 1).toString() : 'previous') || name === 'previous') {
+                      return formatCurrency(value, 'USD');
+                    }
                     if (name === 'amount') {
                       return formatCurrency(value, 'USD');
                     }
@@ -138,12 +192,23 @@ export function MonthlyTrendChart({ data, loading, entity }: MonthlyTrendChartPr
                 <Line
                   yAxisId="left"
                   type="monotone"
-                  dataKey="amount"
+                  dataKey={currentYear ? currentYear.toString() : 'amount'}
                   stroke="#3B82F6"
                   strokeWidth={2}
-                  name="Amount"
+                  name={currentYear ? currentYear.toString() : 'Amount'}
                   dot={{ r: 4 }}
                 />
+                {currentYear && (
+                  <Line
+                    yAxisId="left"
+                    type="monotone"
+                    dataKey={(currentYear - 1).toString()}
+                    stroke="#6B7280"
+                    strokeWidth={2}
+                    name={(currentYear - 1).toString()}
+                    dot={{ r: 4 }}
+                  />
+                )}
                 <Line
                   yAxisId="right"
                   type="monotone"

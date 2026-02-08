@@ -11,6 +11,8 @@ interface KPICardsProps {
     totalQty: number;
     avgAmount: number;
     totalTransactions: number;
+    prevTotalAmount?: number; // 직전 연도 매출액
+    prevTotalQty?: number; // 직전 연도 수량
     comparison: {
       amount: number;
       qty: number;
@@ -58,6 +60,11 @@ export function KPICards({ data, loading, entity }: KPICardsProps) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatKRW(data.totalAmount)}</div>
+            {data.prevTotalAmount !== undefined && data.prevTotalAmount > 0 && (
+              <div className="text-sm text-muted-foreground mt-1">
+                Previous year: {formatKRW(data.prevTotalAmount)}
+              </div>
+            )}
             <div className={`flex items-center text-xs mt-1 ${data.comparison.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {data.comparison.amount >= 0 ? (
                 <ArrowUp className="h-3 w-3 mr-1" />
@@ -81,6 +88,9 @@ export function KPICards({ data, loading, entity }: KPICardsProps) {
       icon: DollarSign,
       comparison: data.comparison.amount,
       description: 'Total sales amount',
+      prevValue: data.prevTotalAmount !== undefined && data.prevTotalAmount > 0 
+        ? formatCurrency(data.prevTotalAmount, 'USD') 
+        : undefined,
     },
     {
       title: 'Total Qty',
@@ -119,6 +129,11 @@ export function KPICards({ data, loading, entity }: KPICardsProps) {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{card.value}</div>
+              {(card as any).prevValue && (
+                <div className="text-sm text-muted-foreground mt-1">
+                  Previous year: {(card as any).prevValue}
+                </div>
+              )}
               {card.comparison !== null && (
                 <div className={`flex items-center text-xs mt-1 ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
                   {isPositive ? (

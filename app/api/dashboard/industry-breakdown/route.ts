@@ -32,11 +32,14 @@ export async function GET(request: NextRequest) {
           .from('sales_data')
           .select('industry, line_amount_mst')
           .eq('year', yearInt)
-          .range(from, to);
+          .not('line_amount_mst', 'is', null);
 
         if (entities.length > 0 && !entities.includes('All')) {
           query = query.in('entity', entities);
         }
+
+        // range는 마지막에 적용
+        query = query.range(from, to);
 
         const { data, error } = await query;
         
@@ -72,7 +75,7 @@ export async function GET(request: NextRequest) {
 
     data.forEach((row) => {
       const industry = row.industry || 'Unknown';
-      const amount = parseFloat(row.line_amount_mst || 0);
+      const amount = Number(row.line_amount_mst || 0);
 
       if (!industryMap.has(industry)) {
         industryMap.set(industry, { amount: 0, transactions: 0 });

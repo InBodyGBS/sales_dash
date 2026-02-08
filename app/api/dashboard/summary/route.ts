@@ -218,6 +218,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Calculate percentage change
+    // (totalAmount - prevTotalAmount) / prevTotalAmount * 100
+    // totalAmount가 증가하면 양수, 감소하면 음수
     const amountChange = prevTotalAmount > 0 
       ? ((totalAmount - prevTotalAmount) / prevTotalAmount) * 100 
       : 0;
@@ -231,6 +233,8 @@ export async function GET(request: NextRequest) {
       totalQty,
       avgAmount,
       totalTransactions,
+      prevTotalAmount, // 직전 연도 매출액 추가
+      prevTotalQty, // 직전 연도 수량 추가
       comparison: {
         amount: amountChange,
         qty: qtyChange,
@@ -261,8 +265,6 @@ export async function GET(request: NextRequest) {
     console.error('Error details:', {
       message: errorMessage,
       stack: errorStack,
-      year,
-      entities
     });
     
     return NextResponse.json(

@@ -180,7 +180,7 @@ export default function InBodyGroupDashboardPage() {
 
           {/* Time Trend Section */}
           <div className="grid gap-6 md:grid-cols-1">
-            <MonthlyTrendChart data={monthlyTrend} loading={loading} entity="All" />
+            <MonthlyTrendChart data={monthlyTrend} loading={loading} entity="All" currentYear={parseInt(year)} />
           </div>
 
           {/* Quarterly Comparison and Country Sales Section */}
