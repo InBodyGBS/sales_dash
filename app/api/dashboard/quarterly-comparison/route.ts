@@ -18,38 +18,97 @@ export async function GET(request: NextRequest) {
     const currentYear = parseInt(year);
     const previousYear = currentYear - 1;
 
-    // Get current year data
-    let currentQuery = supabase
-      .from('sales_data')
-      .select('quarter, line_amount_mst');
+    // 모든 데이터를 가져오기 위해 페이지네이션 처리
+    const PAGE_SIZE = 1000;
+    
+    // Get current year data - 모든 페이지 가져오기
+    let allCurrentData: any[] = [];
+    let currentPage = 0;
+    let currentHasMore = true;
 
-    currentQuery = currentQuery.eq('year', currentYear);
+    try {
+      while (currentHasMore) {
+        const from = currentPage * PAGE_SIZE;
+        const to = from + PAGE_SIZE - 1;
+        
+        let currentQuery = supabase
+          .from('sales_data')
+          .select('quarter, line_amount_mst')
+          .eq('year', currentYear)
+          .range(from, to);
 
-    if (entities.length > 0 && !entities.includes('All')) {
-      currentQuery = currentQuery.in('entity', entities);
-    }
+        if (entities.length > 0 && !entities.includes('All')) {
+          currentQuery = currentQuery.in('entity', entities);
+        }
 
-    const { data: currentData, error: currentError } = await currentQuery;
+        const { data, error } = await currentQuery;
+        
+        if (error) {
+          console.error('Current year query error (page ' + currentPage + '):', error);
+          throw new Error(`Database query failed: ${error.message}`);
+        }
 
-    // Get previous year data
-    let prevQuery = supabase
-      .from('sales_data')
-      .select('quarter, line_amount_mst');
-
-    prevQuery = prevQuery.eq('year', previousYear);
-
-    if (entities.length > 0 && !entities.includes('All')) {
-      prevQuery = prevQuery.in('entity', entities);
-    }
-
-    const { data: prevData, error: prevError } = await prevQuery;
-
-    if (currentError || prevError) {
+        if (data && data.length > 0) {
+          allCurrentData = allCurrentData.concat(data);
+          currentPage++;
+          currentHasMore = data.length === PAGE_SIZE;
+        } else {
+          currentHasMore = false;
+        }
+      }
+    } catch (currentError) {
+      console.error('Current year query error:', currentError);
       return NextResponse.json(
-        { error: 'Failed to fetch quarterly comparison', details: currentError?.message || prevError?.message },
+        { error: 'Failed to fetch current year data', details: (currentError as Error).message },
         { status: 500 }
       );
     }
+
+    const currentData = allCurrentData;
+
+    // Get previous year data - 모든 페이지 가져오기
+    let allPrevData: any[] = [];
+    let prevPage = 0;
+    let prevHasMore = true;
+
+    try {
+      while (prevHasMore) {
+        const from = prevPage * PAGE_SIZE;
+        const to = from + PAGE_SIZE - 1;
+        
+        let prevQuery = supabase
+          .from('sales_data')
+          .select('quarter, line_amount_mst')
+          .eq('year', previousYear)
+          .range(from, to);
+
+        if (entities.length > 0 && !entities.includes('All')) {
+          prevQuery = prevQuery.in('entity', entities);
+        }
+
+        const { data, error } = await prevQuery;
+        
+        if (error) {
+          console.error('Previous year query error (page ' + prevPage + '):', error);
+          // 이전 연도 데이터는 필수가 아니므로 에러가 나도 계속 진행
+          break;
+        }
+
+        if (data && data.length > 0) {
+          allPrevData = allPrevData.concat(data);
+          prevPage++;
+          prevHasMore = data.length === PAGE_SIZE;
+        } else {
+          prevHasMore = false;
+        }
+      }
+    } catch (prevError) {
+      console.error('Previous year query error:', prevError);
+      // 이전 연도 데이터는 필수가 아니므로 에러가 나도 계속 진행
+    }
+
+    const prevData = allPrevData;
+
 
     // Group by quarter for current year
     const currentQuarterMap = new Map<string, number>();

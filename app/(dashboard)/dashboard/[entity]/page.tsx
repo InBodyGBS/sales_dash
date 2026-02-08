@@ -7,7 +7,6 @@ import { KPICards } from '@/components/dashboard/KPICards';
 import { MonthlyTrendChart } from '@/components/charts/MonthlyTrendChart';
 import { QuarterlyComparisonChart } from '@/components/charts/QuarterlyComparisonChart';
 import { FGDistributionChart } from '@/components/charts/FGDistributionChart';
-import { EntitySalesChart } from '@/components/charts/EntitySalesChart';
 import { CountrySalesChart } from '@/components/charts/CountrySalesChart';
 import { TopProductsChart } from '@/components/charts/TopProductsChart';
 import { IndustryBreakdownChart } from '@/components/charts/IndustryBreakdownChart';
@@ -42,7 +41,6 @@ export default function EntityDashboardPage() {
   const [monthlyTrend, setMonthlyTrend] = useState<any[]>([]);
   const [quarterlyComparison, setQuarterlyComparison] = useState<any[]>([]);
   const [fgDistribution, setFGDistribution] = useState<any[]>([]);
-  const [entitySales, setEntitySales] = useState<any[]>([]);
   const [countrySales, setCountrySales] = useState<any[]>([]);
   const [topProducts, setTopProducts] = useState<any[]>([]);
   const [industryBreakdown, setIndustryBreakdown] = useState<any[]>([]);
@@ -84,43 +82,61 @@ export default function EntityDashboardPage() {
       // Use the entity from URL, not from filters
       const entityParam = entity;
       
+      const basePromises = [
+        fetch(`/api/dashboard/summary?year=${year}&entities=${entityParam}`),
+        fetch(`/api/dashboard/monthly-trend?year=${year}&entities=${entityParam}`),
+        fetch(`/api/dashboard/quarterly-comparison?year=${year}&entities=${entityParam}`),
+        fetch(`/api/dashboard/country-sales?year=${year}&limit=10&entities=${entityParam}`),
+        fetch(`/api/dashboard/top-products?year=${year}&limit=10&entities=${entityParam}`),
+        fetch(`/api/dashboard/industry-breakdown?year=${year}&entities=${entityParam}`),
+      ];
+
+      // Only fetch FG distribution for non-Korot entities
+      const allPromises = entityParam !== 'Korot' 
+        ? [
+            ...basePromises.slice(0, 3),
+            fetch(`/api/dashboard/fg-distribution?year=${year}&entities=${entityParam}`),
+            ...basePromises.slice(3),
+          ]
+        : basePromises;
+
       const [
         kpiRes,
         monthlyRes,
         quarterlyRes,
-        fgRes,
-        entityRes,
-        countryRes,
-        productsRes,
-        industryRes,
-      ] = await Promise.all([
-        fetch(`/api/dashboard/summary?year=${year}&entities=${entityParam}`),
-        fetch(`/api/dashboard/monthly-trend?year=${year}&entities=${entityParam}`),
-        fetch(`/api/dashboard/quarterly-comparison?year=${year}&entities=${entityParam}`),
-        fetch(`/api/dashboard/fg-distribution?year=${year}&entities=${entityParam}`),
-        fetch(`/api/dashboard/entity-sales?year=${year}`),
-        fetch(`/api/dashboard/country-sales?year=${year}&limit=10&entities=${entityParam}`),
-        fetch(`/api/dashboard/top-products?year=${year}&limit=10&entities=${entityParam}`),
-        fetch(`/api/dashboard/industry-breakdown?year=${year}&entities=${entityParam}`),
-      ]);
+        ...restRes
+      ] = await Promise.all(allPromises);
 
       if (!kpiRes.ok) throw new Error('Failed to fetch KPI data');
       if (!monthlyRes.ok) throw new Error('Failed to fetch monthly trend');
       if (!quarterlyRes.ok) throw new Error('Failed to fetch quarterly comparison');
-      if (!fgRes.ok) throw new Error('Failed to fetch FG distribution');
-      if (!entityRes.ok) throw new Error('Failed to fetch entity sales');
-      if (!countryRes.ok) throw new Error('Failed to fetch country sales');
-      if (!productsRes.ok) throw new Error('Failed to fetch top products');
-      if (!industryRes.ok) throw new Error('Failed to fetch industry breakdown');
-
+      
       setKpiData(await kpiRes.json());
       setMonthlyTrend(await monthlyRes.json());
       setQuarterlyComparison(await quarterlyRes.json());
-      setFGDistribution(await fgRes.json());
-      setEntitySales(await entityRes.json());
-      setCountrySales(await countryRes.json());
-      setTopProducts(await productsRes.json());
-      setIndustryBreakdown(await industryRes.json());
+
+      // Handle FG distribution only for non-Korot entities
+      if (entityParam !== 'Korot') {
+        const [fgRes, countryRes, productsRes, industryRes] = restRes;
+        if (!fgRes.ok) throw new Error('Failed to fetch FG distribution');
+        if (!countryRes.ok) throw new Error('Failed to fetch country sales');
+        if (!productsRes.ok) throw new Error('Failed to fetch top products');
+        if (!industryRes.ok) throw new Error('Failed to fetch industry breakdown');
+        
+        setFGDistribution(await fgRes.json());
+        setCountrySales(await countryRes.json());
+        setTopProducts(await productsRes.json());
+        setIndustryBreakdown(await industryRes.json());
+      } else {
+        const [countryRes, productsRes, industryRes] = restRes;
+        if (!countryRes.ok) throw new Error('Failed to fetch country sales');
+        if (!productsRes.ok) throw new Error('Failed to fetch top products');
+        if (!industryRes.ok) throw new Error('Failed to fetch industry breakdown');
+        
+        setCountrySales(await countryRes.json());
+        setTopProducts(await productsRes.json());
+        setIndustryBreakdown(await industryRes.json());
+      }
     } catch (error) {
       toast.error('Failed to load dashboard data');
       console.error('Failed to fetch data:', error);
@@ -201,27 +217,45 @@ export default function EntityDashboardPage() {
           <KPICards data={kpiData} loading={loading} entity={entity} />
 
           {/* Time Trend Section */}
-          <div className="grid gap-6 md:grid-cols-2">
-            <MonthlyTrendChart data={monthlyTrend} loading={loading} entity={entity} />
-            <QuarterlyComparisonChart
-              data={quarterlyComparison}
-              currentYear={parseInt(year)}
-              loading={loading}
-              entity={entity}
-            />
-          </div>
+          {entity === 'Korot' ? (
+            <>
+              {/* Monthly Trend - Full Width for Korot */}
+              <div className="grid gap-6 md:grid-cols-1">
+                <MonthlyTrendChart data={monthlyTrend} loading={loading} entity={entity} />
+              </div>
+              {/* Quarterly Comparison and Country Sales */}
+              <div className="grid gap-6 md:grid-cols-2">
+                <QuarterlyComparisonChart
+                  data={quarterlyComparison}
+                  currentYear={parseInt(year)}
+                  loading={loading}
+                  entity={entity}
+                />
+                <CountrySalesChart data={countrySales} loading={loading} entity={entity} />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="grid gap-6 md:grid-cols-2">
+                <MonthlyTrendChart data={monthlyTrend} loading={loading} entity={entity} />
+                <QuarterlyComparisonChart
+                  data={quarterlyComparison}
+                  currentYear={parseInt(year)}
+                  loading={loading}
+                  entity={entity}
+                />
+              </div>
 
-          {/* FG & Entity Section */}
-          <div className="grid gap-6 md:grid-cols-2">
-            <FGDistributionChart data={fgDistribution} loading={loading} />
-            <EntitySalesChart data={entitySales} loading={loading} />
-          </div>
-
-          {/* Geographic & Product Section */}
-          <div className="grid gap-6 md:grid-cols-2">
-            <CountrySalesChart data={countrySales} loading={loading} />
-            <TopProductsChart data={topProducts} loading={loading} />
-          </div>
+              {/* FG Distribution and Country Sales Section */}
+              <div className="grid gap-6 md:grid-cols-2">
+                <FGDistributionChart data={fgDistribution} loading={loading} />
+                <CountrySalesChart data={countrySales} loading={loading} entity={entity} />
+              </div>
+            </>
+          )}
+          
+          {/* Top Products Section */}
+          <TopProductsChart data={topProducts} loading={loading} entity={entity} />
 
           {/* Industry Analysis Section */}
           <IndustryBreakdownChart data={industryBreakdown} loading={loading} />

@@ -2,7 +2,8 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { formatCurrency } from '@/lib/utils/formatters';
+import { formatCurrency, formatKRW, formatCompactKRW, formatCompactCurrency } from '@/lib/utils/formatters';
+import { Entity } from '@/lib/types/sales';
 
 interface CountrySalesData {
   country: string;
@@ -12,9 +13,11 @@ interface CountrySalesData {
 interface CountrySalesChartProps {
   data: CountrySalesData[];
   loading?: boolean;
+  entity?: Entity;
 }
 
-export function CountrySalesChart({ data, loading }: CountrySalesChartProps) {
+export function CountrySalesChart({ data, loading, entity }: CountrySalesChartProps) {
+  const isKRWEntity = entity && ['HQ', 'Healthcare', 'Korot'].includes(entity);
   if (loading) {
     return (
       <Card>
@@ -56,17 +59,29 @@ export function CountrySalesChart({ data, loading }: CountrySalesChartProps) {
         <CardTitle>Country Sales</CardTitle>
         <CardDescription>Top countries by sales</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-2">
         <ResponsiveContainer width="100%" height={300}>
           <BarChart
             data={chartData}
             layout="vertical"
-            margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
+            margin={{ top: 5, right: 20, left: -30, bottom: 5 }}
           >
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis type="number" tickFormatter={(value) => formatCurrency(value, 'USD')} />
-            <YAxis type="category" dataKey="country" width={90} fontSize={12} />
-            <Tooltip formatter={(value: number) => formatCurrency(value, 'USD')} />
+            <XAxis 
+              type="number" 
+              tickFormatter={(value) => isKRWEntity ? formatCompactKRW(value) : formatCompactCurrency(value, 'USD')} 
+            />
+            <YAxis 
+              type="category" 
+              dataKey="country" 
+              width={100} 
+              fontSize={12}
+              interval={0}
+              tick={{ fontSize: 12 }}
+            />
+            <Tooltip 
+              formatter={(value: number) => isKRWEntity ? formatKRW(value) : formatCurrency(value, 'USD')} 
+            />
             <Bar dataKey="amount" fill="#3B82F6" name="Amount" />
           </BarChart>
         </ResponsiveContainer>

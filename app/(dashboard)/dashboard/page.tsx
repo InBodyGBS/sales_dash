@@ -80,6 +80,37 @@ export default function DashboardPage() {
           </p>
         </div>
 
+        {/* InBody Group Dashboard Card */}
+        <div className="mb-8">
+          <Card
+            className="p-6 cursor-pointer transition-all hover:shadow-lg hover:border-primary"
+            onClick={() => router.push('/dashboard/group')}
+          >
+            <div className="flex flex-col items-center text-center space-y-4">
+              <div className="p-4 rounded-full bg-primary/10">
+                <Building2 className="h-8 w-8 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold mb-1">InBody Group</h3>
+                <p className="text-sm text-muted-foreground">
+                  View all entities combined
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  router.push('/dashboard/group');
+                }}
+              >
+                View Group Dashboard
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          </Card>
+        </div>
+
         {/* Entity Cards Grid */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {ENTITIES.map((entity) => {

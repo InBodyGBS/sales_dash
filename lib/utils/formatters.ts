@@ -18,6 +18,17 @@ export function formatKRW(amount: number): string {
   }).format(amount);
 }
 
+// Compact formatters for Y-axis (M unit only, no K unit)
+export function formatCompactCurrency(amount: number, currency: string = 'USD'): string {
+  // Always use M unit, no K unit
+  return `${(amount / 1000000).toFixed(1)}M`;
+}
+
+export function formatCompactKRW(amount: number): string {
+  // Always use M unit, no K unit
+  return `${(amount / 1000000).toFixed(1)}M`;
+}
+
 export function formatDate(date: string | Date): string {
   const d = typeof date === 'string' ? new Date(date) : date;
   return new Intl.DateTimeFormat('en-US', {

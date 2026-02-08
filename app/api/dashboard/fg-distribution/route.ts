@@ -15,34 +15,60 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = await createServiceClient();
+    const yearInt = parseInt(year);
 
-    // Note: fg_classification column may not exist yet
-    // For now, we'll check if it exists or use a placeholder
-    let query = supabase
-      .from('sales_data')
-      .select('fg_classification, line_amount_mst');
+    // 모든 데이터를 가져오기 위해 페이지네이션 처리
+    const PAGE_SIZE = 1000;
+    let allData: any[] = [];
+    let page = 0;
+    let hasMore = true;
 
-    query = query.eq('year', parseInt(year));
+    try {
+      while (hasMore) {
+        const from = page * PAGE_SIZE;
+        const to = from + PAGE_SIZE - 1;
+        
+        let query = supabase
+          .from('sales_data')
+          .select('fg_classification, line_amount_mst')
+          .eq('year', yearInt)
+          .range(from, to);
 
-    if (entities.length > 0 && !entities.includes('All')) {
-      query = query.in('entity', entities);
-    }
+        if (entities.length > 0 && !entities.includes('All')) {
+          query = query.in('entity', entities);
+        }
 
-    const { data, error } = await query;
+        const { data, error } = await query;
+        
+        if (error) {
+          // If fg_classification doesn't exist, return empty or default data
+          if (error.code === '42703') {
+            return NextResponse.json([
+              { fg: 'FG', amount: 0, percentage: 0 },
+              { fg: 'NonFG', amount: 0, percentage: 0 },
+            ]);
+          }
+          console.error('Database error (page ' + page + '):', error);
+          throw new Error(`Database query failed: ${error.message}`);
+        }
 
-    if (error) {
-      // If fg_classification doesn't exist, return empty or default data
-      if (error.code === '42703') {
-        return NextResponse.json([
-          { fg: 'FG', amount: 0, percentage: 0 },
-          { fg: 'NonFG', amount: 0, percentage: 0 },
-        ]);
+        if (data && data.length > 0) {
+          allData = allData.concat(data);
+          page++;
+          hasMore = data.length === PAGE_SIZE;
+        } else {
+          hasMore = false;
+        }
       }
+    } catch (queryError) {
+      console.error('Query error:', queryError);
       return NextResponse.json(
-        { error: 'Failed to fetch FG distribution', details: error.message },
+        { error: 'Failed to fetch FG distribution', details: (queryError as Error).message },
         { status: 500 }
       );
     }
+
+    const data = allData;
 
     if (!data || data.length === 0) {
       return NextResponse.json([

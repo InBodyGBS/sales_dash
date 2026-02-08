@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { formatCurrency, formatKRW } from '@/lib/utils/formatters';
+import { formatCurrency, formatKRW, formatCompactCurrency, formatCompactKRW } from '@/lib/utils/formatters';
 import { Entity } from '@/lib/types/sales';
 
 interface QuarterlyComparisonData {
@@ -70,12 +70,14 @@ export function QuarterlyComparisonChart({ data, currentYear, loading, entity }:
       </CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={chartData}>
+          <BarChart data={chartData} margin={{ left: 20, right: 20, top: 5, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="quarter" />
             <YAxis
               domain={yAxisDomain}
-              tickFormatter={(value) => isKRWEntity ? formatKRW(value) : formatCurrency(value, 'USD')}
+              tickFormatter={(value) => isKRWEntity ? formatCompactKRW(value) : formatCompactCurrency(value, 'USD')}
+              width={60}
+              tick={{ fontSize: 12 }}
             />
             <Tooltip
               formatter={(value: number) => isKRWEntity ? formatKRW(value) : formatCurrency(value, 'USD')}
