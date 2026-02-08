@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     // Get current year data
     let currentQuery = supabase
       .from('sales_data')
-      .select('quarter, line_amount_mst, invoice_amount_mst, invoice_amount');
+      .select('quarter, line_amount_mst');
 
     currentQuery = currentQuery.eq('year', currentYear);
 
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     // Get previous year data
     let prevQuery = supabase
       .from('sales_data')
-      .select('quarter, line_amount_mst, invoice_amount_mst, invoice_amount');
+      .select('quarter, line_amount_mst');
 
     prevQuery = prevQuery.eq('year', previousYear);
 
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
     const currentQuarterMap = new Map<string, number>();
     (currentData || []).forEach((row) => {
       const quarter = row.quarter || 'Q1';
-      const amount = parseFloat(row.line_amount_mst || row.invoice_amount_mst || row.invoice_amount || 0);
+      const amount = parseFloat(row.line_amount_mst || 0);
       currentQuarterMap.set(quarter, (currentQuarterMap.get(quarter) || 0) + (isNaN(amount) ? 0 : amount));
     });
 
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
     const prevQuarterMap = new Map<string, number>();
     (prevData || []).forEach((row) => {
       const quarter = row.quarter || 'Q1';
-      const amount = parseFloat(row.line_amount_mst || row.invoice_amount_mst || row.invoice_amount || 0);
+      const amount = parseFloat(row.line_amount_mst || 0);
       prevQuarterMap.set(quarter, (prevQuarterMap.get(quarter) || 0) + (isNaN(amount) ? 0 : amount));
     });
 

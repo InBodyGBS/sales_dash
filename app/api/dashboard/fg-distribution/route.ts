@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     // For now, we'll check if it exists or use a placeholder
     let query = supabase
       .from('sales_data')
-      .select('fg_classification, line_amount_mst, invoice_amount_mst, invoice_amount');
+      .select('fg_classification, line_amount_mst');
 
     query = query.eq('year', parseInt(year));
 
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
 
     data.forEach((row) => {
       const fg = row.fg_classification || 'NonFG';
-      const amount = parseFloat(row.line_amount_mst || row.invoice_amount_mst || row.invoice_amount || 0);
+      const amount = parseFloat(row.line_amount_mst || 0);
       
       fgMap.set(fg, (fgMap.get(fg) || 0) + (isNaN(amount) ? 0 : amount));
     });

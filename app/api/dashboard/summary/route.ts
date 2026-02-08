@@ -15,29 +15,74 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = await createServiceClient();
+    const yearInt = parseInt(year);
 
-    // Build query - use sales_data table (vw_sales_enriched will be created later)
-    let query = supabase
-      .from('sales_data')
-      .select('line_amount_mst, quantity, invoice_amount_mst, invoice_amount');
+    // Total Amount = 연도별 Line Amount_MST의 합계
+    // 모든 페이지를 반복해서 가져와서 전체 합계 계산
+    
+    // 모든 데이터를 가져오기 위해 페이지네이션 처리
+    const PAGE_SIZE = 1000;
+    let allData: any[] = [];
+    let page = 0;
+    let hasMore = true;
+    let totalCount = 0;
 
-    // Filter by year
-    query = query.eq('year', parseInt(year));
+    try {
+      while (hasMore) {
+        const from = page * PAGE_SIZE;
+        const to = from + PAGE_SIZE - 1;
+        
+        // 각 페이지마다 새로운 쿼리 생성
+        let query = supabase
+          .from('sales_data')
+          .select('line_amount_mst, quantity', { count: 'exact', head: false })
+          .eq('year', yearInt);
 
-    // Filter by entities
-    if (entities.length > 0 && !entities.includes('All')) {
-      query = query.in('entity', entities);
-    }
+        // Filter by entities
+        if (entities.length > 0 && !entities.includes('All')) {
+          query = query.in('entity', entities);
+        }
 
-    const { data, error } = await query;
+        // range 적용
+        query = query.range(from, to);
 
-    if (error) {
-      console.error('Database error:', error);
+        const { data, error, count } = await query;
+        
+        if (error) {
+          console.error('Database error (page ' + page + '):', error);
+          throw new Error(`Database query failed: ${error.message}`);
+        }
+
+        if (count !== null && totalCount === 0) {
+          totalCount = count;
+        }
+
+        if (data && data.length > 0) {
+          allData = allData.concat(data);
+          page++;
+          hasMore = data.length === PAGE_SIZE; // 더 가져올 데이터가 있는지 확인
+        } else {
+          hasMore = false;
+        }
+      }
+    } catch (queryError) {
+      console.error('Query error:', queryError);
       return NextResponse.json(
-        { error: 'Failed to fetch sales data', details: error.message },
+        { error: 'Failed to fetch sales data', details: (queryError as Error).message },
         { status: 500 }
       );
     }
+    
+    const data = allData;
+    
+    // 디버깅: 실제로 가져온 데이터 수 확인
+    console.log(`🔍 DB 쿼리 결과 (모든 페이지):`, {
+      가져온_행수: data.length,
+      count_값: totalCount,
+      페이지_수: page,
+      year: yearInt,
+      entities
+    });
 
     if (!data || data.length === 0) {
       return NextResponse.json({
@@ -52,42 +97,125 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Calculate metrics
-    const totalAmount = data.reduce((sum, row) => {
-      const amount = parseFloat(row.line_amount_mst || row.invoice_amount_mst || row.invoice_amount || 0);
-      return sum + (isNaN(amount) ? 0 : amount);
-    }, 0);
-
-    const totalQty = data.reduce((sum, row) => {
-      const qty = parseFloat(row.quantity || 0);
-      return sum + (isNaN(qty) ? 0 : qty);
-    }, 0);
+    // Calculate Total Amount: 연도별 Line Amount_MST 합계
+    // Number() 사용하여 정확한 숫자 변환
+    let totalAmount = 0;
+    let totalQty = 0;
+    let nullCount = 0;
+    let zeroCount = 0;
+    
+    for (const row of data) {
+      // line_amount_mst 처리
+      if (row.line_amount_mst === null || row.line_amount_mst === undefined) {
+        nullCount++;
+      } else {
+        const amount = Number(row.line_amount_mst);
+        if (isNaN(amount)) {
+          console.warn('Invalid line_amount_mst:', row.line_amount_mst);
+        } else {
+          totalAmount += amount;
+          if (amount === 0) zeroCount++;
+        }
+      }
+      
+      // quantity 처리
+      if (row.quantity !== null && row.quantity !== undefined) {
+        const qty = Number(row.quantity);
+        if (!isNaN(qty)) {
+          totalQty += qty;
+        }
+      }
+    }
 
     const avgAmount = data.length > 0 ? totalAmount / data.length : 0;
     const totalTransactions = data.length;
+    
+    // 상세 디버깅 로그
+    console.log(`📊 Summary API - 연도별 Line Amount_MST 합계 계산:`, {
+      year: yearInt,
+      entities,
+      DB에서_가져온_행수: data.length,
+      null_line_amount_mst_개수: nullCount,
+      zero_line_amount_mst_개수: zeroCount,
+      계산된_Total_Amount: totalAmount,
+      계산된_Total_Amount_포맷: totalAmount.toLocaleString(),
+      샘플_데이터_타입: typeof data[0]?.line_amount_mst,
+      샘플_값: data.slice(0, 3).map(r => ({
+        line_amount_mst: r.line_amount_mst,
+        타입: typeof r.line_amount_mst,
+        변환된값: Number(r.line_amount_mst)
+      }))
+    });
+    
+    console.log(`✅ Total Amount 계산 완료: ${totalAmount.toLocaleString()} (${data.length}개 행)`);
 
-    // Get previous period data for comparison
-    const prevYear = parseInt(year) - 1;
-    let prevQuery = supabase
-      .from('sales_data')
-      .select('line_amount_mst, quantity, invoice_amount_mst, invoice_amount')
-      .eq('year', prevYear);
+    // Get previous period data for comparison - 모든 페이지 가져오기
+    const prevYear = yearInt - 1;
+    let allPrevData: any[] = [];
+    let prevPage = 0;
+    let prevHasMore = true;
 
-    if (entities.length > 0 && !entities.includes('All')) {
-      prevQuery = prevQuery.in('entity', entities);
+    try {
+      while (prevHasMore) {
+        const from = prevPage * PAGE_SIZE;
+        const to = from + PAGE_SIZE - 1;
+        
+        // 각 페이지마다 새로운 쿼리 생성
+        let prevQuery = supabase
+          .from('sales_data')
+          .select('line_amount_mst, quantity', { count: 'exact', head: false })
+          .eq('year', prevYear);
+
+        if (entities.length > 0 && !entities.includes('All')) {
+          prevQuery = prevQuery.in('entity', entities);
+        }
+
+        prevQuery = prevQuery.range(from, to);
+
+        const { data, error } = await prevQuery;
+        
+        if (error) {
+          console.error('Previous year query error (page ' + prevPage + '):', error);
+          // 이전 연도 데이터는 필수가 아니므로 에러가 나도 계속 진행
+          break;
+        }
+
+        if (data && data.length > 0) {
+          allPrevData = allPrevData.concat(data);
+          prevPage++;
+          prevHasMore = data.length === PAGE_SIZE;
+        } else {
+          prevHasMore = false;
+        }
+      }
+    } catch (prevQueryError) {
+      console.error('Previous year query error:', prevQueryError);
+      // 이전 연도 데이터는 필수가 아니므로 에러가 나도 계속 진행
     }
 
-    const { data: prevData } = await prevQuery;
+    const prevData = allPrevData;
 
-    const prevTotalAmount = prevData?.reduce((sum, row) => {
-      const amount = parseFloat(row.line_amount_mst || row.invoice_amount_mst || row.invoice_amount || 0);
-      return sum + (isNaN(amount) ? 0 : amount);
-    }, 0) || 0;
-
-    const prevTotalQty = prevData?.reduce((sum, row) => {
-      const qty = parseFloat(row.quantity || 0);
-      return sum + (isNaN(qty) ? 0 : qty);
-    }, 0) || 0;
+    // Calculate previous year totals
+    let prevTotalAmount = 0;
+    let prevTotalQty = 0;
+    
+    if (prevData && Array.isArray(prevData) && prevData.length > 0) {
+      for (const row of prevData) {
+        if (row.line_amount_mst !== null && row.line_amount_mst !== undefined) {
+          const amount = Number(row.line_amount_mst);
+          if (!isNaN(amount)) {
+            prevTotalAmount += amount;
+          }
+        }
+        
+        if (row.quantity !== null && row.quantity !== undefined) {
+          const qty = Number(row.quantity);
+          if (!isNaN(qty)) {
+            prevTotalQty += qty;
+          }
+        }
+      }
+    }
 
     // Calculate percentage change
     const amountChange = prevTotalAmount > 0 
@@ -97,7 +225,8 @@ export async function GET(request: NextRequest) {
       ? ((totalQty - prevTotalQty) / prevTotalQty) * 100 
       : 0;
 
-    return NextResponse.json({
+    // 응답에 디버깅 정보 포함 (개발 환경에서만)
+    const response: any = {
       totalAmount,
       totalQty,
       avgAmount,
@@ -106,11 +235,42 @@ export async function GET(request: NextRequest) {
         amount: amountChange,
         qty: qtyChange,
       },
-    });
+    };
+
+    // 디버깅 정보 추가
+    if (process.env.NODE_ENV === 'development') {
+      response._debug = {
+        year: yearInt,
+        entities,
+        dataRows: data.length,
+        totalCount: totalCount,
+        pages: page,
+        nullCount,
+        zeroCount,
+        calculatedTotal: totalAmount,
+        calculatedTotalFormatted: totalAmount.toLocaleString(),
+      };
+    }
+
+    return NextResponse.json(response);
   } catch (error) {
     console.error('Dashboard summary API error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
+    console.error('Error details:', {
+      message: errorMessage,
+      stack: errorStack,
+      year,
+      entities
+    });
+    
     return NextResponse.json(
-      { error: 'Failed to fetch dashboard summary', details: (error as Error).message },
+      { 
+        error: 'Failed to fetch dashboard summary', 
+        details: errorMessage,
+        stack: process.env.NODE_ENV === 'development' ? errorStack : undefined
+      },
       { status: 500 }
     );
   }

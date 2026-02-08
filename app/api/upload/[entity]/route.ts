@@ -17,7 +17,7 @@ const COLUMNS_TO_REMOVE = [
   'Total_MST', 'Open balance', 'Due date', 'Sales tax group', 'Payment type', 
   'Terms of payment', 'Payment schedule', 'Method of payment', 'Posting profile', 
   'Delivery terms', 'H_DIM_WK', 'H_WK_NAME', 'H_DIM_CC', 'H DIM NAME', 
-  'Line number', 'Street', 'ZIP/postal code', 'Final ZipCode', 'Text', 
+  'Street', 'ZIP/postal code', 'Final ZipCode', 'Text', 
   'Warehouse', 'Name3', 'Inventory unit', 'Price unit', 'Sales tax group2', 
   'TaxItemGroup', 'Mode of delivery', 'Dlv Detail', 'Online order', 
   'Sales channel', 'Promotion', '2nd Sales', 'Main account', 'Account name', 
@@ -34,7 +34,7 @@ const COLUMN_MAPPING: Record<string, string> = {
   'Sales order': 'sales_order',
   'Customer invoice account': 'customer_invoice_account',
   'Invoice account': 'invoice_account',
-  'Group': 'group_name',
+  'Group': 'group',
   'Currency': 'currency',
   'City': 'city',
   'State': 'state',
@@ -45,6 +45,7 @@ const COLUMN_MAPPING: Record<string, string> = {
   'Model': 'model',
   'Item number': 'item_number',
   'Product name': 'product_name',
+  'Line number': 'line_number',
   'Quantity': 'quantity',
   'Net amount': 'net_amount',
   'Line Amount_MST': 'line_amount_mst',
@@ -211,10 +212,66 @@ export async function POST(
     filteredData = removeEmptyRows(filteredData);
     console.log(`🗑️ 빈 행 제거 후: ${filteredData.length}개 행`);
 
+    // 중복 제거
+    const uniqueMap = new Map();
+    filteredData.forEach(row => {
+      const key = `${entity}|${row.invoice_date}|${row.invoice}|${row.sales_order}|${row.item_number}|${row.line_number}|${row.quantity}`;
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, row);
+      }
+    });
+    filteredData = Array.from(uniqueMap.values());
+    console.log(`🔍 중복 제거 후: ${filteredData.length}개 행`);
+
     // 5. DB에 저장 (배치 처리)
-    const BATCH_SIZE = 1000;
+    const BATCH_SIZE = 500; // 배치 크기 감소 (1000 -> 500)
     let totalInserted = 0;
     let totalSkipped = 0;
+
+    // 재시도 함수
+    const insertWithRetry = async (record: any, maxRetries = 3): Promise<{ success: boolean; skipped: boolean }> => {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const { error: insertError } = await supabase
+            .from('sales_data')
+            .insert([record]);
+
+          if (insertError) {
+            // HTML 에러 응답 감지
+            if (typeof insertError.message === 'string' && insertError.message.includes('<!DOCTYPE html>')) {
+              if (attempt < maxRetries) {
+                console.log(`⚠️ Supabase 서버 에러 감지, 재시도 ${attempt}/${maxRetries}...`);
+                await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // 지수 백오프
+                continue;
+              }
+              throw new Error('Supabase 서버가 일시적으로 응답하지 않습니다. 잠시 후 다시 시도해주세요.');
+            }
+
+            if (insertError.code === '23505') {
+              // 중복 에러는 Skip으로 처리
+              return { success: false, skipped: true };
+            } else {
+              // 다른 에러는 재시도
+              if (attempt < maxRetries) {
+                console.log(`⚠️ Insert 에러 (시도 ${attempt}/${maxRetries}): ${insertError.message}`);
+                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+                continue;
+              }
+              throw new Error(`Insert failed: ${insertError.message || insertError.code || 'Unknown error'}`);
+            }
+          }
+          
+          return { success: true, skipped: false };
+        } catch (error) {
+          if (attempt === maxRetries) {
+            throw error;
+          }
+          console.log(`⚠️ 예외 발생, 재시도 ${attempt}/${maxRetries}...`);
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        }
+      }
+      return { success: false, skipped: false };
+    };
 
     for (let i = 0; i < filteredData.length; i += BATCH_SIZE) {
       const batch = filteredData.slice(i, i + BATCH_SIZE);
@@ -223,19 +280,21 @@ export async function POST(
       for (let j = 0; j < batch.length; j++) {
         const record = batch[j];
         
-        const { error: insertError } = await supabase
-          .from('sales_data')
-          .insert([record]);
-
-        if (insertError) {
-          if (insertError.code === '23505') {
-            // 중복 에러는 Skip으로 처리
+        try {
+          const result = await insertWithRetry(record);
+          
+          if (result.success) {
+            totalInserted++;
+          } else if (result.skipped) {
             totalSkipped++;
-          } else {
-            throw new Error(`Batch ${Math.floor(i / BATCH_SIZE) + 1}, Row ${j + 1} insert failed: ${insertError.message}`);
           }
-        } else {
-          totalInserted++;
+        } catch (error) {
+          const errorMessage = (error as Error).message;
+          // HTML 에러 메시지 정리
+          if (errorMessage.includes('<!DOCTYPE html>')) {
+            throw new Error(`Batch ${Math.floor(i / BATCH_SIZE) + 1}, Row ${j + 1}: Supabase 서버 에러가 발생했습니다. 잠시 후 다시 시도해주세요.`);
+          }
+          throw new Error(`Batch ${Math.floor(i / BATCH_SIZE) + 1}, Row ${j + 1}: ${errorMessage}`);
         }
       }
 

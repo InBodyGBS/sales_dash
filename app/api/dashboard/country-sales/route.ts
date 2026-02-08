@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     // Select country column (exists in schema) and amount columns
     let query = supabase
       .from('sales_data')
-      .select('country, state, city, entity, line_amount_mst, invoice_amount_mst, invoice_amount');
+      .select('country, state, city, entity, line_amount_mst');
 
     query = query.eq('year', parseInt(year));
 
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     data.forEach((row: any) => {
       // Use country if available, otherwise fallback to state, city, or entity
       const country = row.country || row.state || row.city || row.entity || 'Unknown';
-      const amount = parseFloat(row.line_amount_mst || row.invoice_amount_mst || row.invoice_amount || 0);
+      const amount = parseFloat(row.line_amount_mst || 0);
       
       countryMap.set(country, (countryMap.get(country) || 0) + (isNaN(amount) ? 0 : amount));
     });

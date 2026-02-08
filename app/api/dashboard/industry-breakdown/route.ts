@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('sales_data')
-      .select('industry, line_amount_mst, invoice_amount_mst, invoice_amount');
+      .select('industry, line_amount_mst');
 
     query = query.eq('year', parseInt(year));
 
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
 
     data.forEach((row) => {
       const industry = row.industry || 'Unknown';
-      const amount = parseFloat(row.line_amount_mst || row.invoice_amount_mst || row.invoice_amount || 0);
+      const amount = parseFloat(row.line_amount_mst || 0);
 
       if (!industryMap.has(industry)) {
         industryMap.set(industry, { amount: 0, transactions: 0 });

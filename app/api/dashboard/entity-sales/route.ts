@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('sales_data')
-      .select('entity, line_amount_mst, quantity, invoice_amount_mst, invoice_amount')
+      .select('entity, line_amount_mst, quantity')
       .eq('year', parseInt(year));
 
     if (error) {
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       }
 
       const entityData = entityMap.get(entity)!;
-      const amount = parseFloat(row.line_amount_mst || row.invoice_amount_mst || row.invoice_amount || 0);
+      const amount = parseFloat(row.line_amount_mst || 0);
       const qty = parseFloat(row.quantity || 0);
       
       entityData.amount += isNaN(amount) ? 0 : amount;

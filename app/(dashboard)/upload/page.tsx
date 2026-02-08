@@ -22,7 +22,8 @@ import {
 } from '@/components/ui/dialog';
 import { Entity, UploadHistory } from '@/lib/types/sales';
 import { formatDate } from '@/lib/utils/formatters';
-import { CheckCircle2, XCircle, Clock, ChevronDown, ChevronUp } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const MAX_ERROR_PREVIEW_LENGTH = 50;
 
@@ -30,6 +31,7 @@ export default function UploadPage() {
   const [entity, setEntity] = useState<Entity>('HQ');
   const [uploadHistory, setUploadHistory] = useState<UploadHistory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [expandedErrors, setExpandedErrors] = useState<Set<string>>(new Set());
   const [errorDialog, setErrorDialog] = useState<{
     open: boolean;
@@ -112,6 +114,31 @@ export default function UploadPage() {
       title: `에러 상세: ${fileName}`,
       message: errorMessage,
     });
+  };
+
+  const handleDelete = async (uploadId: string, fileName: string) => {
+    if (!confirm(`정말 "${fileName}" 업로드 기록을 삭제하시겠습니까?`)) {
+      return;
+    }
+
+    setDeletingId(uploadId);
+    try {
+      const response = await fetch(`/api/upload/history?id=${uploadId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete upload history');
+      }
+
+      toast.success('업로드 기록이 삭제되었습니다');
+      fetchUploadHistory();
+    } catch (error) {
+      console.error('Failed to delete upload history:', error);
+      toast.error('업로드 기록 삭제에 실패했습니다');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const formatErrorPreview = (errorMessage: string | null, uploadId: string): string => {
@@ -247,6 +274,20 @@ export default function UploadPage() {
                             </div>
                           )}
                         </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleDelete(upload.id, upload.file_name)}
+                          disabled={deletingId === upload.id}
+                          title="삭제"
+                        >
+                          {deletingId === upload.id ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </Button>
                       </div>
                     );
                   })}

@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     // Get all data for the year
     let query = supabase
       .from('sales_data')
-      .select('invoice_date, line_amount_mst, quantity, invoice_amount_mst, invoice_amount');
+      .select('invoice_date, line_amount_mst, quantity');
 
     query = query.eq('year', parseInt(year));
 
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
       }
 
       const monthData = monthMap.get(month)!;
-      const amount = parseFloat(row.line_amount_mst || row.invoice_amount_mst || row.invoice_amount || 0);
+      const amount = parseFloat(row.line_amount_mst || 0);
       const qty = parseFloat(row.quantity || 0);
       
       monthData.amount += isNaN(amount) ? 0 : amount;

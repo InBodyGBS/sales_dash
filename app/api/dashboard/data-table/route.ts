@@ -118,7 +118,7 @@ export async function GET(request: NextRequest) {
             industry: row.industry || 'Unknown',
             currency: row.currency || 'USD',
             qty: parseFloat(row.quantity || 0),
-            amount: parseFloat(row.line_amount_mst || row.invoice_amount_mst || row.invoice_amount || 0),
+            amount: parseFloat(row.line_amount_mst || 0),
           }));
 
         return NextResponse.json({
@@ -147,7 +147,7 @@ export async function GET(request: NextRequest) {
       industry: row.industry || 'Unknown',
       currency: row.currency || 'USD',
       qty: parseFloat(row.quantity || 0),
-      amount: parseFloat(row.line_amount_mst || row.invoice_amount_mst || row.invoice_amount || 0),
+      amount: parseFloat(row.line_amount_mst || 0),
     }));
 
     return NextResponse.json({

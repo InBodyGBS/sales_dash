@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('sales_data')
-      .select('product_name, product, line_amount_mst, quantity, invoice_amount_mst, invoice_amount');
+      .select('product_name, product, line_amount_mst, quantity');
 
     query = query.eq('year', parseInt(year));
 
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
 
     data.forEach((row) => {
       const product = row.product_name || row.product || 'Unknown';
-      const amount = parseFloat(row.line_amount_mst || row.invoice_amount_mst || row.invoice_amount || 0);
+      const amount = parseFloat(row.line_amount_mst || 0);
       const qty = parseFloat(row.quantity || 0);
 
       if (!productMap.has(product)) {
