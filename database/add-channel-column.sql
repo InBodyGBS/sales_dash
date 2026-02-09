@@ -1,0 +1,149 @@
+-- Add Channel column to sales_data table
+-- This column will be automatically calculated based on entity, group, and invoice_account
+
+-- Step 1: Add the Channel column
+ALTER TABLE sales_data 
+ADD COLUMN IF NOT EXISTS channel VARCHAR(50);
+
+-- Step 2: Create a function to calculate Channel value
+CREATE OR REPLACE FUNCTION calculate_channel(
+    p_entity VARCHAR(50),
+    p_group VARCHAR(100),
+    p_invoice_account VARCHAR(100)
+) RETURNS VARCHAR(50) AS $$
+DECLARE
+    v_channel VARCHAR(50);
+BEGIN
+    -- Initialize as NULL
+    v_channel := NULL;
+    
+    -- HQ entity
+    IF p_entity = 'HQ' THEN
+        IF p_group IN ('CG11', 'CG31') THEN
+            -- Check if invoice_account is in Distributor list
+            IF p_invoice_account IN (
+                'HC000140', 'HC000282', 'HC000290', 'HC000382', 'HC000469', 
+                'HC000543', 'HC000586', 'HC000785', 'HC005195', 'HC005197', 
+                'HC005873', 'HC005974', 'HC012621'
+            ) THEN
+                v_channel := 'Distributor';
+            ELSE
+                v_channel := 'Direct';
+            END IF;
+        ELSIF p_group = 'CG12' THEN
+            v_channel := 'Overseas';
+        ELSIF p_group IN ('CG21', 'CG22') THEN
+            v_channel := 'Inter-Company';
+        END IF;
+    
+    -- KOROT entity
+    ELSIF p_entity = 'Korot' THEN
+        IF p_group IN ('CG11', 'CG31') THEN
+            -- Check if invoice_account is in Distributor list
+            IF p_invoice_account IN (
+                'KC000140', 'KC000282', 'KC000382', 'KC000469', 'KC000543', 
+                'KC000586', 'KC000785', 'KC005873', 'KC005974', 'KC010343', 
+                'KC010367'
+            ) THEN
+                v_channel := 'Distributor';
+            ELSE
+                v_channel := 'Direct';
+            END IF;
+        ELSIF p_group = 'CG12' THEN
+            v_channel := 'Overseas';
+        ELSIF p_group IN ('CG21', 'CG22') THEN
+            v_channel := 'Inter-Company';
+        END IF;
+    
+    -- Healthcare entity
+    ELSIF p_entity = 'Healthcare' THEN
+        IF p_group IN ('CG11', 'CG31') THEN
+            -- Check if invoice_account is in Distributor list
+            IF p_invoice_account IN (
+                'HCC000005', 'HCC000006', 'HCC000007', 'HCC000008', 'HCC000009', 
+                'HCC000010', 'HCC000011', 'HCC000012', 'HCC000013', 'HCC000273'
+            ) THEN
+                v_channel := 'Distributor';
+            ELSE
+                v_channel := 'Direct';
+            END IF;
+        ELSIF p_group = 'CG12' THEN
+            v_channel := 'Overseas';
+        ELSIF p_group IN ('CG21', 'CG22') THEN
+            v_channel := 'Inter-Company';
+        END IF;
+    
+    -- Vietnam entity
+    ELSIF p_entity = 'Vietnam' THEN
+        IF p_group IN ('CG12', 'CG16', 'CG17', 'CG31') THEN
+            v_channel := 'Direct';
+        ELSIF p_group = 'CG13' THEN
+            v_channel := 'Distributor';
+        ELSIF p_group IN ('CG14', 'CG15') THEN
+            v_channel := 'Dealer';
+        ELSIF p_group IN ('CG21', 'CG22') THEN
+            v_channel := 'Inter-Company';
+        END IF;
+    
+    -- BWA entity
+    ELSIF p_entity = 'BWA' THEN
+        IF UPPER(TRIM(COALESCE(p_group, ''))) IN ('DOMESTIC', 'ETC') THEN
+            v_channel := 'Direct';
+        ELSIF UPPER(TRIM(COALESCE(p_group, ''))) = 'INTERCOMPA' THEN
+            v_channel := 'Inter-Company';
+        ELSIF UPPER(TRIM(COALESCE(p_group, ''))) = 'OVERSEAS' THEN
+            v_channel := 'Overseas';
+        END IF;
+    
+    -- USA entity
+    ELSIF p_entity = 'USA' THEN
+        IF p_invoice_account = 'UC000001' THEN
+            v_channel := 'Distributor';
+        ELSIF UPPER(TRIM(COALESCE(p_group, ''))) IN ('DOMESTIC', 'ETC') THEN
+            v_channel := 'Direct';
+        ELSIF UPPER(TRIM(COALESCE(p_group, ''))) = 'INTERCOMPA' THEN
+            v_channel := 'Inter-Company';
+        ELSIF UPPER(TRIM(COALESCE(p_group, ''))) = 'OVERSEAS' THEN
+            v_channel := 'Overseas';
+        END IF;
+    END IF;
+    
+    RETURN v_channel;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Step 3: Update existing records with calculated Channel values
+UPDATE sales_data
+SET channel = calculate_channel(entity, "group", invoice_account)
+WHERE channel IS NULL OR channel != calculate_channel(entity, "group", invoice_account);
+
+-- Step 4: Create a trigger to automatically update Channel when entity, group, or invoice_account changes
+CREATE OR REPLACE FUNCTION update_channel_on_change()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.channel := calculate_channel(NEW.entity, NEW."group", NEW.invoice_account);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Drop trigger if exists
+DROP TRIGGER IF EXISTS trigger_update_channel ON sales_data;
+
+-- Create trigger
+CREATE TRIGGER trigger_update_channel
+    BEFORE INSERT OR UPDATE OF entity, "group", invoice_account ON sales_data
+    FOR EACH ROW
+    EXECUTE FUNCTION update_channel_on_change();
+
+-- Step 5: Create index for better query performance
+CREATE INDEX IF NOT EXISTS idx_sales_channel ON sales_data(channel);
+
+-- Step 6: Verify the update
+-- Check how many records were updated and their distribution
+SELECT 
+    entity,
+    channel,
+    COUNT(*) as record_count
+FROM sales_data
+GROUP BY entity, channel
+ORDER BY entity, channel;

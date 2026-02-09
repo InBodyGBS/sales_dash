@@ -90,6 +90,113 @@ function getQuarter(dateStr: string | null): string | null {
   return null;
 }
 
+// Channel 계산 함수
+function calculateChannel(entity: string, group: string | null, invoiceAccount: string | null): string | null {
+  if (!entity || !group) return null;
+  
+  const entityUpper = entity.toUpperCase();
+  const groupStr = group?.toString().trim() || '';
+  const invoiceAccountStr = invoiceAccount?.toString().trim() || '';
+
+  // HQ entity
+  if (entityUpper === 'HQ') {
+    if (groupStr === 'CG11' || groupStr === 'CG31') {
+      const hqDistributors = [
+        'HC000140', 'HC000282', 'HC000290', 'HC000382', 'HC000469',
+        'HC000543', 'HC000586', 'HC000785', 'HC005195', 'HC005197',
+        'HC005873', 'HC005974', 'HC012621'
+      ];
+      if (invoiceAccountStr && hqDistributors.includes(invoiceAccountStr)) {
+        return 'Distributor';
+      }
+      return 'Direct';
+    } else if (groupStr === 'CG12') {
+      return 'Overseas';
+    } else if (groupStr === 'CG21' || groupStr === 'CG22') {
+      return 'Inter-Company';
+    }
+  }
+
+  // KOROT entity
+  if (entityUpper === 'KOROT') {
+    if (groupStr === 'CG11' || groupStr === 'CG31') {
+      const korotDistributors = [
+        'KC000140', 'KC000282', 'KC000382', 'KC000469', 'KC000543',
+        'KC000586', 'KC000785', 'KC005873', 'KC005974', 'KC010343',
+        'KC010367'
+      ];
+      if (invoiceAccountStr && korotDistributors.includes(invoiceAccountStr)) {
+        return 'Distributor';
+      }
+      return 'Direct';
+    } else if (groupStr === 'CG12') {
+      return 'Overseas';
+    } else if (groupStr === 'CG21' || groupStr === 'CG22') {
+      return 'Inter-Company';
+    }
+  }
+
+  // Healthcare entity
+  if (entityUpper === 'HEALTHCARE') {
+    if (groupStr === 'CG11' || groupStr === 'CG31') {
+      const healthcareDistributors = [
+        'HCC000005', 'HCC000006', 'HCC000007', 'HCC000008', 'HCC000009',
+        'HCC000010', 'HCC000011', 'HCC000012', 'HCC000013', 'HCC000273'
+      ];
+      if (invoiceAccountStr && healthcareDistributors.includes(invoiceAccountStr)) {
+        return 'Distributor';
+      }
+      return 'Direct';
+    } else if (groupStr === 'CG12') {
+      return 'Overseas';
+    } else if (groupStr === 'CG21' || groupStr === 'CG22') {
+      return 'Inter-Company';
+    }
+  }
+
+  // Vietnam entity
+  if (entityUpper === 'VIETNAM') {
+    if (groupStr === 'CG12' || groupStr === 'CG16' || groupStr === 'CG17' || groupStr === 'CG31') {
+      return 'Direct';
+    } else if (groupStr === 'CG13') {
+      return 'Distributor';
+    } else if (groupStr === 'CG14' || groupStr === 'CG15') {
+      return 'Dealer';
+    } else if (groupStr === 'CG21' || groupStr === 'CG22') {
+      return 'Inter-Company';
+    }
+  }
+
+  // BWA entity
+  if (entityUpper === 'BWA') {
+    const groupUpper = groupStr.toUpperCase();
+    if (groupUpper === 'DOMESTIC' || groupUpper === 'ETC') {
+      return 'Direct';
+    } else if (groupUpper === 'INTERCOMPA') {
+      return 'Inter-Company';
+    } else if (groupUpper === 'OVERSEAS') {
+      return 'Overseas';
+    }
+  }
+
+  // USA entity
+  if (entityUpper === 'USA') {
+    if (invoiceAccountStr === 'UC000001') {
+      return 'Distributor';
+    }
+    const groupUpper = groupStr.toUpperCase();
+    if (groupUpper === 'DOMESTIC' || groupUpper === 'ETC') {
+      return 'Direct';
+    } else if (groupUpper === 'INTERCOMPA') {
+      return 'Inter-Company';
+    } else if (groupUpper === 'OVERSEAS') {
+      return 'Overseas';
+    }
+  }
+
+  return null;
+}
+
 // 필요한 컬럼만 추출하고 DB 컬럼명으로 변환
 function filterAndMapColumns(data: any[], entity: string): any[] {
   if (!data || data.length === 0) return [];
@@ -122,6 +229,16 @@ function filterAndMapColumns(data: any[], entity: string): any[] {
     // Industry가 NULL이면 'Other'로 설정
     if (!mapped.industry || mapped.industry === null || mapped.industry === '') {
       mapped.industry = 'Other';
+    }
+    
+    // Channel 계산 및 추가
+    const channel = calculateChannel(
+      entity,
+      mapped.group || null,
+      mapped.invoice_account || null
+    );
+    if (channel) {
+      mapped.channel = channel;
     }
     
     return mapped;
@@ -269,10 +386,13 @@ export async function POST(request: NextRequest) {
     checkTimeout();
 
     // 5. DB에 저장 (배치 처리)
-    const BATCH_SIZE = 100; // 100개씩 배치로 나눠서 삽입
+    const BATCH_SIZE = 50; // 100에서 50으로 감소하여 타임아웃 방지
     let totalInserted = 0;
     let totalSkipped = 0;
     const errors: string[] = [];
+
+    // 딜레이 함수
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
     try {
       for (let i = 0; i < filteredData.length; i += BATCH_SIZE) {
@@ -282,31 +402,66 @@ export async function POST(request: NextRequest) {
         const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
         const totalBatches = Math.ceil(filteredData.length / BATCH_SIZE);
 
-        try {
-          const { data, error: insertError } = await supabase
-            .from('sales_data')
-            .insert(batch)
-            .select();
+        // 재시도 로직 (최대 3번)
+        let retries = 3;
+        let batchSuccess = false;
+        let lastError: any = null;
 
-          if (insertError) {
-            // 중복 에러는 Skip으로 처리
-            if (insertError.code === '23505') {
-              totalSkipped += batch.length;
-              console.log(`⚠️ 배치 ${batchNumber}/${totalBatches}: 중복 데이터로 Skip`);
+        while (retries > 0 && !batchSuccess) {
+          try {
+            const { data, error: insertError } = await supabase
+              .from('sales_data')
+              .insert(batch)
+              .select();
+
+            if (insertError) {
+              // 중복 에러는 Skip으로 처리하고 재시도하지 않음
+              if (insertError.code === '23505') {
+                totalSkipped += batch.length;
+                console.log(`⚠️ 배치 ${batchNumber}/${totalBatches}: 중복 데이터로 Skip`);
+                batchSuccess = true; // 중복은 성공으로 간주
+              } else {
+                // 다른 에러는 재시도
+                lastError = insertError;
+                retries--;
+                
+                if (retries > 0) {
+                  console.warn(`⚠️ 배치 ${batchNumber}/${totalBatches} 에러 발생, ${retries}번 남았습니다. 200ms 후 재시도...`, insertError.message);
+                  await delay(200); // 실패 시 200ms 대기 후 재시도
+                } else {
+                  // 재시도 실패
+                  const errorMsg = `Batch ${batchNumber}: ${insertError.message}`;
+                  errors.push(errorMsg);
+                  console.error(`❌ 배치 ${batchNumber}/${totalBatches} 최종 실패:`, insertError);
+                  batchSuccess = true; // 재시도 실패했지만 다음 배치로 진행
+                }
+              }
             } else {
-              // 다른 에러는 기록
-              const errorMsg = `Batch ${batchNumber}: ${insertError.message}`;
-              errors.push(errorMsg);
-              console.error(`❌ 배치 ${batchNumber}/${totalBatches} 에러:`, insertError);
+              // 성공
+              totalInserted += data?.length || batch.length;
+              console.log(`✅ 배치 ${batchNumber}/${totalBatches} 완료: ${data?.length || batch.length}개 저장`);
+              batchSuccess = true;
             }
-          } else {
-            totalInserted += data?.length || batch.length;
-            console.log(`✅ 배치 ${batchNumber}/${totalBatches} 완료: ${data?.length || batch.length}개 저장`);
+          } catch (batchError) {
+            lastError = batchError;
+            retries--;
+            
+            if (retries > 0) {
+              console.warn(`⚠️ 배치 ${batchNumber}/${totalBatches} 예외 발생, ${retries}번 남았습니다. 200ms 후 재시도...`, (batchError as Error).message);
+              await delay(200); // 실패 시 200ms 대기 후 재시도
+            } else {
+              // 재시도 실패
+              const errorMsg = `Batch ${batchNumber} failed: ${(batchError as Error).message}`;
+              errors.push(errorMsg);
+              console.error(`❌ 배치 ${batchNumber}/${totalBatches} 최종 실패:`, batchError);
+              batchSuccess = true; // 재시도 실패했지만 다음 배치로 진행
+            }
           }
-        } catch (batchError) {
-          const errorMsg = `Batch ${batchNumber} failed: ${(batchError as Error).message}`;
-          errors.push(errorMsg);
-          console.error(`❌ 배치 ${batchNumber} 예외:`, batchError);
+        }
+
+        // 각 배치 사이 딜레이 (마지막 배치가 아닌 경우)
+        if (i + BATCH_SIZE < filteredData.length) {
+          await delay(100); // 100ms 딜레이
         }
       }
     } catch (error) {

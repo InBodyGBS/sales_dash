@@ -7,7 +7,7 @@ import { KPICards } from '@/components/dashboard/KPICards';
 import { MonthlyTrendChart } from '@/components/charts/MonthlyTrendChart';
 import { QuarterlyComparisonChart } from '@/components/charts/QuarterlyComparisonChart';
 import { FGDistributionChart } from '@/components/charts/FGDistributionChart';
-import { CountrySalesChart } from '@/components/charts/CountrySalesChart';
+import { ChannelSalesChart } from '@/components/charts/ChannelSalesChart';
 import { TopProductsChart } from '@/components/charts/TopProductsChart';
 import { IndustryBreakdownChart } from '@/components/charts/IndustryBreakdownChart';
 import { SalesDataTable } from '@/components/dashboard/SalesDataTable';
@@ -41,7 +41,7 @@ export default function EntityDashboardPage() {
   const [monthlyTrend, setMonthlyTrend] = useState<any[]>([]);
   const [quarterlyComparison, setQuarterlyComparison] = useState<any[]>([]);
   const [fgDistribution, setFGDistribution] = useState<any[]>([]);
-  const [countrySales, setCountrySales] = useState<any[]>([]);
+  const [channelSales, setChannelSales] = useState<any[]>([]);
   const [topProducts, setTopProducts] = useState<any[]>([]);
   const [industryBreakdown, setIndustryBreakdown] = useState<any[]>([]);
 
@@ -86,7 +86,7 @@ export default function EntityDashboardPage() {
         fetch(`/api/dashboard/summary?year=${year}&entities=${entityParam}`),
         fetch(`/api/dashboard/monthly-trend?year=${year}&entities=${entityParam}`),
         fetch(`/api/dashboard/quarterly-comparison?year=${year}&entities=${entityParam}`),
-        fetch(`/api/dashboard/country-sales?year=${year}&limit=10&entities=${entityParam}`),
+        fetch(`/api/dashboard/channel-sales?year=${year}&limit=10&entities=${entityParam}`),
         fetch(`/api/dashboard/top-products?year=${year}&limit=10&entities=${entityParam}`),
         fetch(`/api/dashboard/industry-breakdown?year=${year}&entities=${entityParam}`),
       ];
@@ -117,23 +117,23 @@ export default function EntityDashboardPage() {
 
       // Handle FG distribution only for non-Korot, non-BWA, non-USA, non-Vietnam, and non-HQ entities
       if (entityParam !== 'Korot' && entityParam !== 'BWA' && entityParam !== 'USA' && entityParam !== 'Vietnam' && entityParam !== 'HQ') {
-        const [fgRes, countryRes, productsRes, industryRes] = restRes;
+        const [fgRes, channelRes, productsRes, industryRes] = restRes;
         if (!fgRes.ok) throw new Error('Failed to fetch FG distribution');
-        if (!countryRes.ok) throw new Error('Failed to fetch country sales');
+        if (!channelRes.ok) throw new Error('Failed to fetch channel sales');
         if (!productsRes.ok) throw new Error('Failed to fetch top products');
         if (!industryRes.ok) throw new Error('Failed to fetch industry breakdown');
         
         setFGDistribution(await fgRes.json());
-        setCountrySales(await countryRes.json());
+        setChannelSales(await channelRes.json());
         setTopProducts(await productsRes.json());
         setIndustryBreakdown(await industryRes.json());
       } else {
-        const [countryRes, productsRes, industryRes] = restRes;
-        if (!countryRes.ok) throw new Error('Failed to fetch country sales');
+        const [channelRes, productsRes, industryRes] = restRes;
+        if (!channelRes.ok) throw new Error('Failed to fetch channel sales');
         if (!productsRes.ok) throw new Error('Failed to fetch top products');
         if (!industryRes.ok) throw new Error('Failed to fetch industry breakdown');
         
-        setCountrySales(await countryRes.json());
+        setChannelSales(await channelRes.json());
         setTopProducts(await productsRes.json());
         setIndustryBreakdown(await industryRes.json());
       }
@@ -232,7 +232,7 @@ export default function EntityDashboardPage() {
                   loading={loading}
                   entity={entity}
                 />
-                <CountrySalesChart data={countrySales} loading={loading} entity={entity} />
+                <ChannelSalesChart data={channelSales} loading={loading} entity={entity} />
               </div>
             </>
           ) : (
@@ -250,7 +250,7 @@ export default function EntityDashboardPage() {
               {/* FG Distribution and Country Sales Section */}
               <div className="grid gap-6 md:grid-cols-2">
                 <FGDistributionChart data={fgDistribution} loading={loading} />
-                <CountrySalesChart data={countrySales} loading={loading} entity={entity} />
+                <ChannelSalesChart data={channelSales} loading={loading} entity={entity} />
               </div>
             </>
           )}

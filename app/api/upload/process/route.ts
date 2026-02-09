@@ -247,6 +247,116 @@ export async function POST(request: NextRequest) {
       return isNaN(num) ? null : num;
     }
 
+    // Channel 계산 함수
+    function calculateChannel(entity: string, group: string | null, invoiceAccount: string | null): string | null {
+      if (!entity || !group) return null;
+      
+      const entityUpper = entity.toUpperCase();
+      const groupStr = group?.toString().trim() || '';
+      const invoiceAccountStr = invoiceAccount?.toString().trim() || '';
+
+      // HQ entity
+      if (entityUpper === 'HQ') {
+        if (groupStr === 'CG11' || groupStr === 'CG31') {
+          // Check if invoice_account is in Distributor list
+          const hqDistributors = [
+            'HC000140', 'HC000282', 'HC000290', 'HC000382', 'HC000469',
+            'HC000543', 'HC000586', 'HC000785', 'HC005195', 'HC005197',
+            'HC005873', 'HC005974', 'HC012621'
+          ];
+          if (invoiceAccountStr && hqDistributors.includes(invoiceAccountStr)) {
+            return 'Distributor';
+          }
+          return 'Direct';
+        } else if (groupStr === 'CG12') {
+          return 'Overseas';
+        } else if (groupStr === 'CG21' || groupStr === 'CG22') {
+          return 'Inter-Company';
+        }
+      }
+
+      // KOROT entity
+      if (entityUpper === 'KOROT') {
+        if (groupStr === 'CG11' || groupStr === 'CG31') {
+          // Check if invoice_account is in Distributor list
+          const korotDistributors = [
+            'KC000140', 'KC000282', 'KC000382', 'KC000469', 'KC000543',
+            'KC000586', 'KC000785', 'KC005873', 'KC005974', 'KC010343',
+            'KC010367'
+          ];
+          if (invoiceAccountStr && korotDistributors.includes(invoiceAccountStr)) {
+            return 'Distributor';
+          }
+          return 'Direct';
+        } else if (groupStr === 'CG12') {
+          return 'Overseas';
+        } else if (groupStr === 'CG21' || groupStr === 'CG22') {
+          return 'Inter-Company';
+        }
+      }
+
+      // Healthcare entity
+      if (entityUpper === 'HEALTHCARE') {
+        if (groupStr === 'CG11' || groupStr === 'CG31') {
+          // Check if invoice_account is in Distributor list
+          const healthcareDistributors = [
+            'HCC000005', 'HCC000006', 'HCC000007', 'HCC000008', 'HCC000009',
+            'HCC000010', 'HCC000011', 'HCC000012', 'HCC000013', 'HCC000273'
+          ];
+          if (invoiceAccountStr && healthcareDistributors.includes(invoiceAccountStr)) {
+            return 'Distributor';
+          }
+          return 'Direct';
+        } else if (groupStr === 'CG12') {
+          return 'Overseas';
+        } else if (groupStr === 'CG21' || groupStr === 'CG22') {
+          return 'Inter-Company';
+        }
+      }
+
+      // Vietnam entity
+      if (entityUpper === 'VIETNAM') {
+        if (groupStr === 'CG12' || groupStr === 'CG16' || groupStr === 'CG17' || groupStr === 'CG31') {
+          return 'Direct';
+        } else if (groupStr === 'CG13') {
+          return 'Distributor';
+        } else if (groupStr === 'CG14' || groupStr === 'CG15') {
+          return 'Dealer';
+        } else if (groupStr === 'CG21' || groupStr === 'CG22') {
+          return 'Inter-Company';
+        }
+      }
+
+      // BWA entity
+      if (entityUpper === 'BWA') {
+        const groupUpper = groupStr.toUpperCase();
+        if (groupUpper === 'DOMESTIC' || groupUpper === 'ETC') {
+          return 'Direct';
+        } else if (groupUpper === 'INTERCOMPA') {
+          return 'Inter-Company';
+        } else if (groupUpper === 'OVERSEAS') {
+          return 'Overseas';
+        }
+      }
+
+      // USA entity
+      if (entityUpper === 'USA') {
+        if (invoiceAccountStr === 'UC000001') {
+          return 'Distributor';
+        }
+        const groupUpper = groupStr.toUpperCase();
+        if (groupUpper === 'DOMESTIC' || groupUpper === 'ETC') {
+          return 'Direct';
+        } else if (groupUpper === 'INTERCOMPA') {
+          return 'Inter-Company';
+        } else if (groupUpper === 'OVERSEAS') {
+          return 'Overseas';
+        }
+      }
+
+      return null;
+    }
+
     // 숫자 타입 컬럼 목록
     const numericColumns = [
       'line_number',
@@ -296,6 +406,16 @@ export async function POST(request: NextRequest) {
       // Industry가 NULL이면 'Other'로 설정
       if (!transformed.industry || transformed.industry === null || transformed.industry === '') {
         transformed.industry = 'Other';
+      }
+
+      // Channel 계산 및 추가
+      const channel = calculateChannel(
+        entity,
+        transformed.group || null,
+        transformed.invoice_account || null
+      );
+      if (channel) {
+        transformed.channel = channel;
       }
 
       return transformed;
