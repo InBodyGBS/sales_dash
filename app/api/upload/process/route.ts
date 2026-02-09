@@ -36,6 +36,75 @@ export async function POST(request: NextRequest) {
     // 3. Create Supabase client
     const supabase = createServiceClient();
 
+    // Entities that require item mapping (exclude HQ, USA, BWA, Healthcare, Korot, Vietnam)
+    const entitiesRequiringItemMapping = ['Japan', 'China'];
+    const requiresItemMapping = entitiesRequiringItemMapping.includes(entity);
+
+    // 3.1. Load item mapping with fallback logic:
+    // 1. First check item_master (master table, no entity needed)
+    // 2. If not found in master, check item_mapping (entity-specific)
+    let itemMappingMap: Map<string, { fg_classification?: string; category?: string; model?: string; product?: string }> = new Map();
+    if (requiresItemMapping) {
+      console.log(`🔍 Loading item mappings (master first, then entity-specific)...`);
+      
+      // Load both item_master and item_mapping
+      const [masterResult, mappingResult] = await Promise.all([
+        supabase
+          .from('item_master')
+          .select('item_number, fg_classification, category, model, product')
+          .eq('is_active', true),
+        supabase
+          .from('item_mapping')
+          .select('item_number, fg_classification, category, model, product')
+          .eq('entity', entity)
+          .eq('is_active', true),
+      ]);
+
+      const { data: itemMasters, error: itemMasterError } = masterResult;
+      const { data: itemMappings, error: itemMappingError } = mappingResult;
+
+      // First, load all item_master mappings (priority)
+      if (!itemMasterError && itemMasters && itemMasters.length > 0) {
+        itemMasters.forEach((mapping: any) => {
+          itemMappingMap.set(mapping.item_number, {
+            fg_classification: mapping.fg_classification || undefined,
+            category: mapping.category || undefined,
+            model: mapping.model || undefined,
+            product: mapping.product || undefined,
+          });
+        });
+        console.log(`✅ Loaded ${itemMasters.length} item mappings from item_master`);
+      } else if (itemMasterError && itemMasterError.code !== '42P01') {
+        // Only warn if it's not a "table doesn't exist" error
+        console.warn('⚠️ Failed to load item_master:', itemMasterError.message);
+      }
+
+      // Then, load item_mapping for items not found in master (fallback)
+      if (!itemMappingError && itemMappings && itemMappings.length > 0) {
+        let fallbackCount = 0;
+        itemMappings.forEach((mapping: any) => {
+          // Only add if not already in map (master has priority)
+          if (!itemMappingMap.has(mapping.item_number)) {
+            itemMappingMap.set(mapping.item_number, {
+              fg_classification: mapping.fg_classification || undefined,
+              category: mapping.category || undefined,
+              model: mapping.model || undefined,
+              product: mapping.product || undefined,
+            });
+            fallbackCount++;
+          }
+        });
+        if (fallbackCount > 0) {
+          console.log(`✅ Loaded ${fallbackCount} additional item mappings from item_mapping (entity: ${entity})`);
+        }
+      } else if (itemMappingError && itemMappingError.code !== '42P01') {
+        // Only warn if it's not a "table doesn't exist" error
+        console.warn('⚠️ Failed to load item_mapping:', itemMappingError.message);
+      }
+
+      console.log(`📊 Total ${itemMappingMap.size} item mappings loaded (master + entity-specific fallback)`);
+    }
+
     // 4. Download file from Supabase Storage
     console.log('📥 Downloading file from storage...');
     const { downloadFile } = await import('@/lib/utils/storage');
@@ -556,6 +625,26 @@ export async function POST(request: NextRequest) {
       );
       if (channel) {
         transformed.channel = channel;
+      }
+
+      // Item Mapping 적용 (Japan, China 등)
+      if (requiresItemMapping && transformed.item_number) {
+        const itemMapping = itemMappingMap.get(transformed.item_number);
+        if (itemMapping) {
+          // 매핑된 값이 있으면 덮어쓰기
+          if (itemMapping.fg_classification !== undefined) {
+            transformed.fg_classification = itemMapping.fg_classification;
+          }
+          if (itemMapping.category !== undefined) {
+            transformed.category = itemMapping.category;
+          }
+          if (itemMapping.model !== undefined) {
+            transformed.model = itemMapping.model;
+          }
+          if (itemMapping.product !== undefined) {
+            transformed.product = itemMapping.product;
+          }
+        }
       }
 
       return transformed;

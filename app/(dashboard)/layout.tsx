@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Upload, BarChart3, Home } from 'lucide-react';
+import { Upload, BarChart3, Home, Settings } from 'lucide-react';
 
 export default function DashboardLayout({
   children,
@@ -27,6 +27,12 @@ export default function DashboardLayout({
                   <Button variant="ghost" size="sm">
                     <Upload className="h-4 w-4 mr-2" />
                     Upload
+                  </Button>
+                </Link>
+                <Link href="/item-mapping">
+                  <Button variant="ghost" size="sm">
+                    <Settings className="h-4 w-4 mr-2" />
+                    Item Mapping
                   </Button>
                 </Link>
               </div>
