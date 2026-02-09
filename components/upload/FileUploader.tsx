@@ -16,6 +16,7 @@ import {
 import { Upload, File, X, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Entity } from '@/lib/types/sales';
 import toast from 'react-hot-toast';
+import { ColumnMappingDialog } from './ColumnMappingDialog';
 
 interface FileUploaderProps {
   entity: Entity;
@@ -26,6 +27,8 @@ export function FileUploader({ entity, onUploadSuccess }: FileUploaderProps) {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [showMappingDialog, setShowMappingDialog] = useState(false);
+  const [columnMapping, setColumnMapping] = useState<Record<string, string> | null>(null);
   const [errorDialog, setErrorDialog] = useState<{
     open: boolean;
     title: string;
@@ -42,6 +45,14 @@ export function FileUploader({ entity, onUploadSuccess }: FileUploaderProps) {
 
     const file = acceptedFiles[0];
     setUploadedFile(file);
+    
+    // For Japan and China, show mapping dialog first
+    if (entity === 'Japan' || entity === 'China') {
+      setShowMappingDialog(true);
+      return;
+    }
+    
+    // For other entities, proceed with upload
     setUploading(true);
     setProgress(0);
 
@@ -118,6 +129,7 @@ export function FileUploader({ entity, onUploadSuccess }: FileUploaderProps) {
                 entity: entity,
                 fileName: result.data.fileName,
                 historyId: result.data.historyId,
+                columnMapping: columnMapping,
               }),
             });
 
@@ -231,6 +243,157 @@ export function FileUploader({ entity, onUploadSuccess }: FileUploaderProps) {
   const handleRemove = () => {
     setUploadedFile(null);
     setProgress(0);
+    setColumnMapping(null);
+  };
+
+  const handleMappingComplete = async (mapping: Record<string, string>) => {
+    setColumnMapping(mapping);
+    setShowMappingDialog(false);
+    
+    // Now proceed with upload
+    if (!uploadedFile) return;
+    
+    setUploading(true);
+    setProgress(0);
+
+    try {
+      // Simulate progress
+      const progressInterval = setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return 90;
+          }
+          return prev + 10;
+        });
+      }, 200);
+
+      toast.loading('Uploading file...', { id: 'upload' });
+
+      // Upload directly using the new API endpoint
+      const formData = new FormData();
+      formData.append('file', uploadedFile);
+
+      const response = await fetch(`/api/upload/${entity}`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      clearInterval(progressInterval);
+      setProgress(100);
+
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (e) {
+          errorData = { error: `HTTP ${response.status}: ${response.statusText}` };
+        }
+
+        const errorMessage = errorData.error || 'Upload failed';
+        const errorDetails = errorData.details;
+
+        // Show error in dialog
+        setErrorDialog({
+          open: true,
+          title: 'Upload Failed',
+          message: errorMessage,
+          details: errorDetails,
+        });
+
+        // Also show toast for quick notification
+        toast.error(errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
+      
+      toast.dismiss('upload');
+      
+      if (result.success) {
+        console.log('✅ 파일 저장 완료!');
+        console.log(`📁 저장 경로: ${result.data.storagePath}`);
+        
+        // 파일이 저장되었으면 처리 API 호출
+        if (result.data.needsProcessing && result.data.storagePath) {
+          toast.loading('Processing file...', { id: 'process' });
+          
+          try {
+            const processResponse = await fetch('/api/upload/process', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                storagePath: result.data.storagePath,
+                entity: entity,
+                fileName: result.data.fileName,
+                historyId: result.data.historyId,
+                columnMapping: mapping,
+              }),
+            });
+
+            if (!processResponse.ok) {
+              throw new Error('Processing failed');
+            }
+
+            const processResult = await processResponse.json();
+            toast.dismiss('process');
+            
+            if (processResult.success) {
+              const skipMessage = processResult.rowsSkipped > 0 ? `, ${processResult.rowsSkipped} rows skipped` : '';
+              toast.success(
+                `Successfully processed ${processResult.rowsInserted} rows from ${uploadedFile.name}${skipMessage}`
+              );
+            } else {
+              throw new Error(processResult.error || 'Processing failed');
+            }
+          } catch (processError) {
+            toast.dismiss('process');
+            toast.error('File uploaded but processing failed. Please try again.');
+            console.error('Processing error:', processError);
+          }
+        } else {
+          // 이미 처리된 경우
+          const skipMessage = result.rowsSkipped > 0 ? `, ${result.rowsSkipped} rows skipped` : '';
+          toast.success(
+            `Successfully uploaded ${result.rowsInserted || 0} rows from ${uploadedFile.name}${skipMessage}`
+          );
+        }
+
+        if (onUploadSuccess) {
+          onUploadSuccess();
+        }
+
+        // Reset after 2 seconds
+        setTimeout(() => {
+          setUploadedFile(null);
+          setProgress(0);
+          setColumnMapping(null);
+        }, 2000);
+      } else {
+        throw new Error(result.error || 'Processing failed');
+      }
+    } catch (error) {
+      const errorMessage = (error as Error).message || 'Upload failed';
+      
+      toast.dismiss('upload');
+      
+      // If error dialog is not already open, show it
+      if (!errorDialog.open) {
+        setErrorDialog({
+          open: true,
+          title: 'Upload Error',
+          message: errorMessage,
+        });
+      }
+      
+      setUploadedFile(null);
+      setProgress(0);
+      setColumnMapping(null);
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -362,6 +525,15 @@ export function FileUploader({ entity, onUploadSuccess }: FileUploaderProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Column Mapping Dialog */}
+      <ColumnMappingDialog
+        open={showMappingDialog}
+        onOpenChange={setShowMappingDialog}
+        entity={entity}
+        file={uploadedFile}
+        onMappingComplete={handleMappingComplete}
+      />
     </Card>
   );
 }

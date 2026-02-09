@@ -23,6 +23,8 @@ const ENTITY_DISPLAY_NAMES: Record<Entity, string> = {
   Vietnam: 'Vietnam',
   Healthcare: 'Healthcare',
   Korot: 'Korot',
+  Japan: 'Japan',
+  China: 'China',
   All: 'All',
 };
 
@@ -46,7 +48,7 @@ export default function EntityDashboardPage() {
   const [industryBreakdown, setIndustryBreakdown] = useState<any[]>([]);
 
   // Validate entity
-  const validEntities: Entity[] = ['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot'];
+  const validEntities: Entity[] = ['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China'];
   const isValidEntity = validEntities.includes(entity);
 
   useEffect(() => {
@@ -92,6 +94,7 @@ export default function EntityDashboardPage() {
       ];
 
       // Only fetch FG distribution for non-Korot, non-BWA, non-USA, non-Vietnam, and non-HQ entities
+      // Japan and China also show FG distribution
       const allPromises = entityParam !== 'Korot' && entityParam !== 'BWA' && entityParam !== 'USA' && entityParam !== 'Vietnam' && entityParam !== 'HQ'
         ? [
             ...basePromises.slice(0, 3),
@@ -116,6 +119,7 @@ export default function EntityDashboardPage() {
       setQuarterlyComparison(await quarterlyRes.json());
 
       // Handle FG distribution only for non-Korot, non-BWA, non-USA, non-Vietnam, and non-HQ entities
+      // Japan and China also show FG distribution
       if (entityParam !== 'Korot' && entityParam !== 'BWA' && entityParam !== 'USA' && entityParam !== 'Vietnam' && entityParam !== 'HQ') {
         const [fgRes, channelRes, productsRes, industryRes] = restRes;
         if (!fgRes.ok) throw new Error('Failed to fetch FG distribution');
@@ -218,6 +222,7 @@ export default function EntityDashboardPage() {
           <KPICards data={kpiData} loading={loading} entity={entity} />
 
           {/* Time Trend Section */}
+          {/* Japan and China use the same layout as Healthcare (with FG Distribution) */}
           {entity === 'Korot' || entity === 'BWA' || entity === 'USA' || entity === 'Vietnam' || entity === 'HQ' ? (
             <>
               {/* Monthly Trend - Full Width for Korot and BWA */}

@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { formatCurrency, formatKRW, formatVND, formatCompactKRW, formatCompactCurrency, formatCompactVND } from '@/lib/utils/formatters';
+import { formatCurrency, formatKRW, formatVND, formatJPY, formatCompactKRW, formatCompactCurrency, formatCompactVND, formatCompactJPY } from '@/lib/utils/formatters';
 import { Entity } from '@/lib/types/sales';
 
 interface ChannelSalesData {
@@ -19,6 +19,7 @@ interface ChannelSalesChartProps {
 export function ChannelSalesChart({ data, loading, entity }: ChannelSalesChartProps) {
   const isKRWEntity = entity && ['HQ', 'Healthcare', 'Korot'].includes(entity);
   const isVNDEntity = entity === 'Vietnam';
+  const isJPYEntity = entity === 'Japan';
   
   if (loading) {
     return (
@@ -74,6 +75,7 @@ export function ChannelSalesChart({ data, loading, entity }: ChannelSalesChartPr
               tickFormatter={(value) => {
                 if (isKRWEntity) return formatCompactKRW(value);
                 if (isVNDEntity) return formatCompactVND(value);
+                if (isJPYEntity) return formatCompactJPY(value);
                 return formatCompactCurrency(value, 'USD');
               }} 
             />
@@ -89,6 +91,7 @@ export function ChannelSalesChart({ data, loading, entity }: ChannelSalesChartPr
               formatter={(value: number) => {
                 if (isKRWEntity) return formatKRW(value);
                 if (isVNDEntity) return formatVND(value);
+                if (isJPYEntity) return formatJPY(value);
                 return formatCurrency(value, 'USD');
               }} 
             />

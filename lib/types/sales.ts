@@ -1,4 +1,4 @@
-export type Entity = 'HQ' | 'USA' | 'BWA' | 'Vietnam' | 'Healthcare' | 'Korot' | 'All';
+export type Entity = 'HQ' | 'USA' | 'BWA' | 'Vietnam' | 'Healthcare' | 'Korot' | 'Japan' | 'China' | 'All';
 
 export type Quarter = 'Q1' | 'Q2' | 'Q3' | 'Q4';
 

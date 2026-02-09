@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { formatCurrency, formatNumber, formatKRW, formatVND, formatCompactCurrency, formatCompactKRW, formatCompactVND } from '@/lib/utils/formatters';
+import { formatCurrency, formatNumber, formatKRW, formatVND, formatJPY, formatCompactCurrency, formatCompactKRW, formatCompactVND, formatCompactJPY } from '@/lib/utils/formatters';
 import { Entity } from '@/lib/types/sales';
 
 interface MonthlyTrendData {
@@ -25,6 +25,7 @@ const monthNames = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8�
 export function MonthlyTrendChart({ data, loading, entity, currentYear }: MonthlyTrendChartProps) {
   const isKRWEntity = entity && ['HQ', 'Healthcare', 'Korot'].includes(entity);
   const isVNDEntity = entity === 'Vietnam';
+  const isJPYEntity = entity === 'Japan';
   if (loading) {
     return (
       <Card>
@@ -174,6 +175,47 @@ export function MonthlyTrendChart({ data, loading, entity, currentYear }: Monthl
                       return formatVND(value);
                     }
                     return formatVND(value);
+                  }}
+                />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey={currentYear ? currentYear.toString() : 'amount'}
+                  stroke="#3B82F6"
+                  strokeWidth={2}
+                  name={currentYear ? currentYear.toString() : 'Amount'}
+                  dot={{ r: 4 }}
+                  connectNulls={true}
+                />
+                {currentYear && (
+                  <Line
+                    type="monotone"
+                    dataKey={(currentYear - 1).toString()}
+                    stroke="#6B7280"
+                    strokeWidth={2}
+                    name={(currentYear - 1).toString()}
+                    dot={{ r: 4 }}
+                    connectNulls={true}
+                  />
+                )}
+              </>
+            ) : isJPYEntity ? (
+              <>
+                <YAxis
+                  domain={yAxisDomain}
+                  tickFormatter={(value) => formatCompactJPY(value)}
+                  width={60}
+                  tick={{ fontSize: 12 }}
+                />
+                <Tooltip
+                  formatter={(value: number, name: string) => {
+                    if (name === currentYear?.toString() || name === 'current') {
+                      return formatJPY(value);
+                    }
+                    if (name === (currentYear ? (currentYear - 1).toString() : 'previous') || name === 'previous') {
+                      return formatJPY(value);
+                    }
+                    return formatJPY(value);
                   }}
                 />
                 <Legend />

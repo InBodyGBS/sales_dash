@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     // 1. Parse request body
     const body = await request.json();
-    const { storagePath, entity, fileName, historyId: bodyHistoryId } = body;
+    const { storagePath, entity, fileName, historyId: bodyHistoryId, columnMapping } = body;
     historyId = bodyHistoryId || null; // body에서 추출한 값을 함수 스코프 변수에 할당
 
     console.log('📄 Storage Path:', storagePath);
@@ -103,94 +103,212 @@ export async function POST(request: NextRequest) {
     // 8. Transform and insert data
     console.log('🔄 Transforming data...');
     
-    const columnMap: { [key: string]: string } = {
-      'Sales Type': 'sales_type',
-      'Invoice': 'invoice',
-      'Voucher': 'voucher',
-      'Invoice date': 'invoice_date',
-      'Pool': 'pool',
-      'Supply method': 'supply_method',
-      'Sub Method - 1': 'sub_method_1',
-      'Sub Method - 2': 'sub_method_2',
-      'Sub Method - 3': 'sub_method_3',
-      'Application': 'application',
-      'Industry': 'industry',
-      'Sub Industry - 1': 'sub_industry_1',
-      'Sub Industry - 2': 'sub_industry_2',
-      'General group': 'general_group',
-      'Sales order': 'sales_order',
-      'Account number': 'account_number',
-      'Name': 'name',
-      'Name2': 'name2',
-      'Customer invoice account': 'customer_invoice_account',
-      'Invoice account': 'invoice_account',
-      'Group': 'group',
-      'Currency': 'currency',
-      'Invoice Amount': 'invoice_amount',
-      'Invoice Amount_MST': 'invoice_amount_mst',
-      'Sales tax amount': 'sales_tax_amount',
-      'The sales tax amount, in the accounting currency': 'sales_tax_amount_accounting',
-      'Total for invoice': 'total_for_invoice',
-      'Total_MST': 'total_mst',
-      'Open balance': 'open_balance',
-      'Due date': 'due_date',
-      'Sales tax group': 'sales_tax_group',
-      'Payment type': 'payment_type',
-      'Terms of payment': 'terms_of_payment',
-      'Payment schedule': 'payment_schedule',
-      'Method of payment': 'method_of_payment',
-      'Posting profile': 'posting_profile',
-      'Delivery terms': 'delivery_terms',
-      'H_DIM_WK': 'h_dim_wk',
-      'H_WK_NAME': 'h_wk_name',
-      'H_DIM_CC': 'h_dim_cc',
-      'H DIM NAME': 'h_dim_name',
-      'Line number': 'line_number',
-      'Street': 'street',
-      'City': 'city',
-      'State': 'state',
-      'ZIP/postal code': 'zip_postal_code',
-      'Final ZipCode': 'final_zipcode',
-      'Region': 'region',
-      'Product type': 'product_type',
-      'Item group': 'item_group',
-      'Category': 'category',
-      'Model': 'model',
-      'Item number': 'item_number',
-      'Product name': 'product_name',
-      'Text': 'text',
-      'Warehouse': 'warehouse',
-      'Name3': 'name3',
-      'Quantity': 'quantity',
-      'Inventory unit': 'inventory_unit',
-      'Price unit': 'price_unit',
-      'Net amount': 'net_amount',
-      'Line Amount_MST': 'line_amount_mst',
-      'Sales tax group2': 'sales_tax_group2',
-      'TaxItemGroup': 'tax_item_group',
-      'Mode of delivery': 'mode_of_delivery',
-      'Dlv Detail': 'dlv_detail',
-      'Online order': 'online_order',
-      'Sales channel': 'sales_channel',
-      'Promotion': 'promotion',
-      '2nd Sales': 'second_sales',
-      'Personnel number': 'personnel_number',
-      'WORKERNAME': 'worker_name',
-      'L DIM NAME': 'l_dim_name',
-      'L_DIM_WK': 'l_dim_wk',
-      'L_WK_NAME': 'l_wk_name',
-      'L_DIM_CC': 'l_dim_cc',
-      'Main account': 'main_account',
-      'Account name': 'account_name',
-      'Rebate': 'rebate',
-      'Description': 'description',
-      'Country': 'country',
-      'CREATEDDATE': 'created_date',
-      'CREATEDBY': 'created_by',
-      'Exception': 'exception',
-      'With collection agency': 'with_collection_agency',
-      'Credit rating': 'credit_rating',
-    };
+    // Load column mapping from database if not provided
+    let columnMap: { [key: string]: string } = {};
+    
+    if (columnMapping && Object.keys(columnMapping).length > 0) {
+      // Use provided mapping
+      columnMap = columnMapping;
+      console.log(`📋 Using provided column mapping (${Object.keys(columnMap).length} mappings)`);
+    } else {
+      // Try to load from database
+      try {
+        const mappingResponse = await supabase
+          .from('column_mapping')
+          .select('excel_column, db_column')
+          .eq('entity', entity)
+          .eq('is_active', true);
+        
+        if (mappingResponse.data && mappingResponse.data.length > 0) {
+          mappingResponse.data.forEach((row: any) => {
+            columnMap[row.excel_column] = row.db_column;
+          });
+          console.log(`📋 Loaded column mapping from database (${Object.keys(columnMap).length} mappings)`);
+        } else {
+          // Use default mapping
+          console.log('📋 Using default column mapping');
+          columnMap = {
+            'Sales Type': 'sales_type',
+            'Invoice': 'invoice',
+            'Voucher': 'voucher',
+            'Invoice date': 'invoice_date',
+            'Pool': 'pool',
+            'Supply method': 'supply_method',
+            'Sub Method - 1': 'sub_method_1',
+            'Sub Method - 2': 'sub_method_2',
+            'Sub Method - 3': 'sub_method_3',
+            'Application': 'application',
+            'Industry': 'industry',
+            'Sub Industry - 1': 'sub_industry_1',
+            'Sub Industry - 2': 'sub_industry_2',
+            'General group': 'general_group',
+            'Sales order': 'sales_order',
+            'Account number': 'account_number',
+            'Name': 'name',
+            'Name2': 'name2',
+            'Customer invoice account': 'customer_invoice_account',
+            'Invoice account': 'invoice_account',
+            'Group': 'group',
+            'Currency': 'currency',
+            'Invoice Amount': 'invoice_amount',
+            'Invoice Amount_MST': 'invoice_amount_mst',
+            'Sales tax amount': 'sales_tax_amount',
+            'The sales tax amount, in the accounting currency': 'sales_tax_amount_accounting',
+            'Total for invoice': 'total_for_invoice',
+            'Total_MST': 'total_mst',
+            'Open balance': 'open_balance',
+            'Due date': 'due_date',
+            'Sales tax group': 'sales_tax_group',
+            'Payment type': 'payment_type',
+            'Terms of payment': 'terms_of_payment',
+            'Payment schedule': 'payment_schedule',
+            'Method of payment': 'method_of_payment',
+            'Posting profile': 'posting_profile',
+            'Delivery terms': 'delivery_terms',
+            'H_DIM_WK': 'h_dim_wk',
+            'H_WK_NAME': 'h_wk_name',
+            'H_DIM_CC': 'h_dim_cc',
+            'H DIM NAME': 'h_dim_name',
+            'Line number': 'line_number',
+            'Street': 'street',
+            'City': 'city',
+            'State': 'state',
+            'ZIP/postal code': 'zip_postal_code',
+            'Final ZipCode': 'final_zipcode',
+            'Region': 'region',
+            'Product type': 'product_type',
+            'Item group': 'item_group',
+            'Category': 'category',
+            'Model': 'model',
+            'Item number': 'item_number',
+            'Product name': 'product_name',
+            'Text': 'text',
+            'Warehouse': 'warehouse',
+            'Name3': 'name3',
+            'Quantity': 'quantity',
+            'Inventory unit': 'inventory_unit',
+            'Price unit': 'price_unit',
+            'Net amount': 'net_amount',
+            'Line Amount_MST': 'line_amount_mst',
+            'Sales tax group2': 'sales_tax_group2',
+            'TaxItemGroup': 'tax_item_group',
+            'Mode of delivery': 'mode_of_delivery',
+            'Dlv Detail': 'dlv_detail',
+            'Online order': 'online_order',
+            'Sales channel': 'sales_channel',
+            'Promotion': 'promotion',
+            '2nd Sales': 'second_sales',
+            'Personnel number': 'personnel_number',
+            'WORKERNAME': 'worker_name',
+            'L DIM NAME': 'l_dim_name',
+            'L_DIM_WK': 'l_dim_wk',
+            'L_WK_NAME': 'l_wk_name',
+            'L_DIM_CC': 'l_dim_cc',
+            'Main account': 'main_account',
+            'Account name': 'account_name',
+            'Rebate': 'rebate',
+            'Description': 'description',
+            'Country': 'country',
+            'CREATEDDATE': 'created_date',
+            'CREATEDBY': 'created_by',
+            'Exception': 'exception',
+            'With collection agency': 'with_collection_agency',
+            'Credit rating': 'credit_rating',
+          };
+        }
+      } catch (mappingError) {
+        console.warn('⚠️ Failed to load column mapping, using default:', mappingError);
+        // Use default mapping as fallback
+        columnMap = {
+          'Sales Type': 'sales_type',
+          'Invoice': 'invoice',
+          'Voucher': 'voucher',
+          'Invoice date': 'invoice_date',
+          'Pool': 'pool',
+          'Supply method': 'supply_method',
+          'Sub Method - 1': 'sub_method_1',
+          'Sub Method - 2': 'sub_method_2',
+          'Sub Method - 3': 'sub_method_3',
+          'Application': 'application',
+          'Industry': 'industry',
+          'Sub Industry - 1': 'sub_industry_1',
+          'Sub Industry - 2': 'sub_industry_2',
+          'General group': 'general_group',
+          'Sales order': 'sales_order',
+          'Account number': 'account_number',
+          'Name': 'name',
+          'Name2': 'name2',
+          'Customer invoice account': 'customer_invoice_account',
+          'Invoice account': 'invoice_account',
+          'Group': 'group',
+          'Currency': 'currency',
+          'Invoice Amount': 'invoice_amount',
+          'Invoice Amount_MST': 'invoice_amount_mst',
+          'Sales tax amount': 'sales_tax_amount',
+          'The sales tax amount, in the accounting currency': 'sales_tax_amount_accounting',
+          'Total for invoice': 'total_for_invoice',
+          'Total_MST': 'total_mst',
+          'Open balance': 'open_balance',
+          'Due date': 'due_date',
+          'Sales tax group': 'sales_tax_group',
+          'Payment type': 'payment_type',
+          'Terms of payment': 'terms_of_payment',
+          'Payment schedule': 'payment_schedule',
+          'Method of payment': 'method_of_payment',
+          'Posting profile': 'posting_profile',
+          'Delivery terms': 'delivery_terms',
+          'H_DIM_WK': 'h_dim_wk',
+          'H_WK_NAME': 'h_wk_name',
+          'H_DIM_CC': 'h_dim_cc',
+          'H DIM NAME': 'h_dim_name',
+          'Line number': 'line_number',
+          'Street': 'street',
+          'City': 'city',
+          'State': 'state',
+          'ZIP/postal code': 'zip_postal_code',
+          'Final ZipCode': 'final_zipcode',
+          'Region': 'region',
+          'Product type': 'product_type',
+          'Item group': 'item_group',
+          'Category': 'category',
+          'Model': 'model',
+          'Item number': 'item_number',
+          'Product name': 'product_name',
+          'Text': 'text',
+          'Warehouse': 'warehouse',
+          'Name3': 'name3',
+          'Quantity': 'quantity',
+          'Inventory unit': 'inventory_unit',
+          'Price unit': 'price_unit',
+          'Net amount': 'net_amount',
+          'Line Amount_MST': 'line_amount_mst',
+          'Sales tax group2': 'sales_tax_group2',
+          'TaxItemGroup': 'tax_item_group',
+          'Mode of delivery': 'mode_of_delivery',
+          'Dlv Detail': 'dlv_detail',
+          'Online order': 'online_order',
+          'Sales channel': 'sales_channel',
+          'Promotion': 'promotion',
+          '2nd Sales': 'second_sales',
+          'Personnel number': 'personnel_number',
+          'WORKERNAME': 'worker_name',
+          'L DIM NAME': 'l_dim_name',
+          'L_DIM_WK': 'l_dim_wk',
+          'L_WK_NAME': 'l_wk_name',
+          'L_DIM_CC': 'l_dim_cc',
+          'Main account': 'main_account',
+          'Account name': 'account_name',
+          'Rebate': 'rebate',
+          'Description': 'description',
+          'Country': 'country',
+          'CREATEDDATE': 'created_date',
+          'CREATEDBY': 'created_by',
+          'Exception': 'exception',
+          'With collection agency': 'with_collection_agency',
+          'Credit rating': 'credit_rating',
+        };
+      }
+    }
 
     function parseDate(value: any): string | null {
       if (!value) return null;
@@ -375,7 +493,29 @@ export async function POST(request: NextRequest) {
       'year',
     ];
 
-    const transformedData = jsonData.map((row: any) => {
+    // Japan 엔티티의 경우: 매핑 테이블에 없는 컬럼은 필터링
+    const isJapanEntity = entity === 'Japan';
+    let filteredJsonData = jsonData;
+    
+    if (isJapanEntity && Object.keys(columnMap).length > 0) {
+      // 매핑에 있는 컬럼만 유지
+      const mappedColumns = Object.keys(columnMap);
+      filteredJsonData = jsonData.map((row: any) => {
+        const filteredRow: any = {};
+        mappedColumns.forEach((excelCol) => {
+          if (row.hasOwnProperty(excelCol)) {
+            filteredRow[excelCol] = row[excelCol];
+          }
+        });
+        return filteredRow;
+      });
+      
+      const originalColumnCount = jsonData.length > 0 ? Object.keys(jsonData[0] as Record<string, any>).length : 0;
+      const filteredColumnCount = mappedColumns.length;
+      console.log(`🇯🇵 Japan entity: Filtered columns from ${originalColumnCount} to ${filteredColumnCount} mapped columns`);
+    }
+
+    const transformedData = filteredJsonData.map((row: any) => {
       const transformed: any = {
         entity: entity,
         upload_batch_id: batchId,

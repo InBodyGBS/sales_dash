@@ -13,6 +13,8 @@ export function formatNumber(num: number): string {
 
 export function formatKRW(amount: number): string {
   return new Intl.NumberFormat('ko-KR', {
+    style: 'currency',
+    currency: 'KRW',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount);
@@ -22,6 +24,15 @@ export function formatVND(amount: number): string {
   return new Intl.NumberFormat('vi-VN', {
     style: 'currency',
     currency: 'VND',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+export function formatJPY(amount: number): string {
+  return new Intl.NumberFormat('ja-JP', {
+    style: 'currency',
+    currency: 'JPY',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount);
@@ -39,6 +50,11 @@ export function formatCompactKRW(amount: number): string {
 }
 
 export function formatCompactVND(amount: number): string {
+  // Always use M unit, no K unit
+  return `${(amount / 1000000).toFixed(1)}M`;
+}
+
+export function formatCompactJPY(amount: number): string {
   // Always use M unit, no K unit
   return `${(amount / 1000000).toFixed(1)}M`;
 }

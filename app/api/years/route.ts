@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const entity = searchParams.get('entity');
 
-    const supabase = await createServiceClient();
+    const supabase = createServiceClient();
     
     // 효율적으로 고유 연도만 가져오기: 최대 20페이지(20,000행)까지만 확인
     // 연도는 보통 많지 않으므로 충분함
