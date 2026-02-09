@@ -10,13 +10,15 @@ export const maxDuration = 300; // 5 minutes
 
 export async function POST(request: NextRequest) {
   let batchId = '';
+  let historyId: string | null = null; // catch 블록에서 사용하기 위해 함수 스코프에 선언
   
   try {
     console.log('📥 File processing request received');
 
     // 1. Parse request body
     const body = await request.json();
-    const { storagePath, entity, fileName, historyId } = body;
+    const { storagePath, entity, fileName, historyId: bodyHistoryId } = body;
+    historyId = bodyHistoryId || null; // body에서 추출한 값을 함수 스코프 변수에 할당
 
     console.log('📄 Storage Path:', storagePath);
     console.log('🏢 Entity:', entity);
