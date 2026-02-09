@@ -16,11 +16,12 @@ export async function POST(request: NextRequest) {
 
     // 1. Parse request body
     const body = await request.json();
-    const { storagePath, entity, fileName } = body;
+    const { storagePath, entity, fileName, historyId } = body;
 
     console.log('📄 Storage Path:', storagePath);
     console.log('🏢 Entity:', entity);
     console.log('📝 File Name:', fileName);
+    console.log('📋 History ID:', historyId);
 
     // 2. Validate inputs
     if (!storagePath || !entity || !fileName) {
@@ -59,29 +60,42 @@ export async function POST(request: NextRequest) {
     console.log(`📊 Parsed ${jsonData.length} rows from Excel`);
 
     if (jsonData.length === 0) {
+      // 히스토리 업데이트
+      if (historyId) {
+        await supabase
+          .from('upload_history')
+          .update({
+            status: 'failed',
+            error_message: 'Excel file is empty',
+          })
+          .eq('id', historyId);
+      }
       return NextResponse.json(
         { success: false, error: 'Excel file is empty' },
         { status: 400 }
       );
     }
 
-    // 6. Create batch ID
-    batchId = uuidv4();
+    // 6. Use existing historyId or create new one
+    if (historyId) {
+      batchId = historyId;
+    } else {
+      batchId = uuidv4();
+      // 새 히스토리 생성
+      const { error: historyError } = await supabase
+        .from('upload_history')
+        .insert({
+          batch_id: batchId,
+          entity: entity,
+          file_name: fileName,
+          storage_path: storagePath,
+          rows_uploaded: jsonData.length,
+          status: 'processing',
+        });
 
-    // 7. Record upload in history
-    const { error: historyError } = await supabase
-      .from('upload_history')
-      .insert({
-        batch_id: batchId,
-        entity: entity,
-        file_name: fileName,
-        storage_path: storagePath,
-        rows_uploaded: jsonData.length,
-        status: 'processing',
-      });
-
-    if (historyError) {
-      console.error('❌ History insert error:', historyError);
+      if (historyError) {
+        console.error('❌ History insert error:', historyError);
+      }
     }
 
     // 8. Transform and insert data
@@ -256,14 +270,19 @@ export async function POST(request: NextRequest) {
     }
 
     // 10. Update upload history
-    await supabase
-      .from('upload_history')
-      .update({
-        status: errors.length > 0 ? 'partial' : 'success',
-        rows_uploaded: totalInserted,
-        error_message: errors.length > 0 ? JSON.stringify(errors) : null,
-      })
-      .eq('batch_id', batchId);
+    const updateQuery = historyId 
+      ? supabase.from('upload_history').update({
+          status: errors.length > 0 ? 'partial' : 'success',
+          rows_uploaded: totalInserted,
+          error_message: errors.length > 0 ? JSON.stringify(errors) : null,
+        }).eq('id', historyId)
+      : supabase.from('upload_history').update({
+          status: errors.length > 0 ? 'partial' : 'success',
+          rows_uploaded: totalInserted,
+          error_message: errors.length > 0 ? JSON.stringify(errors) : null,
+        }).eq('batch_id', batchId);
+    
+    await updateQuery;
 
     console.log(`✅ Upload complete: ${totalInserted} rows inserted`);
 
@@ -277,15 +296,18 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('❌ Processing error:', error);
     
-    if (batchId) {
+    if (historyId || batchId) {
       const supabase = createServiceClient();
-      await supabase
-        .from('upload_history')
-        .update({
-          status: 'failed',
-          error_message: (error as Error).message,
-        })
-        .eq('batch_id', batchId);
+      const updateQuery = historyId
+        ? supabase.from('upload_history').update({
+            status: 'failed',
+            error_message: (error as Error).message,
+          }).eq('id', historyId)
+        : supabase.from('upload_history').update({
+            status: 'failed',
+            error_message: (error as Error).message,
+          }).eq('batch_id', batchId);
+      await updateQuery;
     }
 
     return NextResponse.json(

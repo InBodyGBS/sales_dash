@@ -195,140 +195,30 @@ export async function POST(
 
     console.log(`✅ File uploaded to storage: ${storagePath}`);
 
-    // 3. 파일 파싱
-    const arrayBuffer = await file.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer);
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
-    const rawData = XLSX.utils.sheet_to_json(worksheet);
+    // 3. 즉시 응답 반환 (타임아웃 방지)
+    // 데이터 처리는 별도 API (/api/upload/process)에서 처리
+    console.log(`📤 File saved. Processing will be done separately.`);
 
-    console.log(`📊 원본 데이터: ${rawData.length}개 행`);
-
-    // 4. 데이터 정제 및 매핑
-    let filteredData = filterAndMapColumns(rawData, entity);
-    console.log(`🔧 컬럼 필터링 및 매핑 후: ${Object.keys(filteredData[0] || {}).length}개 컬럼`);
-
-    // 빈 행 제거
-    filteredData = removeEmptyRows(filteredData);
-    console.log(`🗑️ 빈 행 제거 후: ${filteredData.length}개 행`);
-
-    // 중복 제거
-    const uniqueMap = new Map();
-    filteredData.forEach(row => {
-      const key = `${entity}|${row.invoice_date}|${row.invoice}|${row.sales_order}|${row.item_number}|${row.line_number}|${row.quantity}`;
-      if (!uniqueMap.has(key)) {
-        uniqueMap.set(key, row);
-      }
-    });
-    filteredData = Array.from(uniqueMap.values());
-    console.log(`🔍 중복 제거 후: ${filteredData.length}개 행`);
-
-    // 5. DB에 저장 (배치 처리)
-    const BATCH_SIZE = 500; // 배치 크기 감소 (1000 -> 500)
-    let totalInserted = 0;
-    let totalSkipped = 0;
-
-    // 재시도 함수
-    const insertWithRetry = async (record: any, maxRetries = 3): Promise<{ success: boolean; skipped: boolean }> => {
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          const { error: insertError } = await supabase
-            .from('sales_data')
-            .insert([record]);
-
-          if (insertError) {
-            // HTML 에러 응답 감지
-            if (typeof insertError.message === 'string' && insertError.message.includes('<!DOCTYPE html>')) {
-              if (attempt < maxRetries) {
-                console.log(`⚠️ Supabase 서버 에러 감지, 재시도 ${attempt}/${maxRetries}...`);
-                await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // 지수 백오프
-                continue;
-              }
-              throw new Error('Supabase 서버가 일시적으로 응답하지 않습니다. 잠시 후 다시 시도해주세요.');
-            }
-
-            if (insertError.code === '23505') {
-              // 중복 에러는 Skip으로 처리
-              return { success: false, skipped: true };
-            } else {
-              // 다른 에러는 재시도
-              if (attempt < maxRetries) {
-                console.log(`⚠️ Insert 에러 (시도 ${attempt}/${maxRetries}): ${insertError.message}`);
-                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-                continue;
-              }
-              throw new Error(`Insert failed: ${insertError.message || insertError.code || 'Unknown error'}`);
-            }
-          }
-          
-          return { success: true, skipped: false };
-        } catch (error) {
-          if (attempt === maxRetries) {
-            throw error;
-          }
-          console.log(`⚠️ 예외 발생, 재시도 ${attempt}/${maxRetries}...`);
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-        }
-      }
-      return { success: false, skipped: false };
-    };
-
-    for (let i = 0; i < filteredData.length; i += BATCH_SIZE) {
-      const batch = filteredData.slice(i, i + BATCH_SIZE);
-
-      // 배치를 하나씩 INSERT 시도하여 중복 체크
-      for (let j = 0; j < batch.length; j++) {
-        const record = batch[j];
-        
-        try {
-          const result = await insertWithRetry(record);
-          
-          if (result.success) {
-            totalInserted++;
-          } else if (result.skipped) {
-            totalSkipped++;
-          }
-        } catch (error) {
-          const errorMessage = (error as Error).message;
-          // HTML 에러 메시지 정리
-          if (errorMessage.includes('<!DOCTYPE html>')) {
-            throw new Error(`Batch ${Math.floor(i / BATCH_SIZE) + 1}, Row ${j + 1}: Supabase 서버 에러가 발생했습니다. 잠시 후 다시 시도해주세요.`);
-          }
-          throw new Error(`Batch ${Math.floor(i / BATCH_SIZE) + 1}, Row ${j + 1}: ${errorMessage}`);
-        }
-      }
-
-      console.log(`✅ 진행: ${totalInserted}개 저장, ${totalSkipped}개 Skip, ${totalInserted + totalSkipped}/${filteredData.length} 행 처리 완료`);
-    }
-
-    // 6. 업로드 히스토리 업데이트 (성공)
+    // 히스토리 업데이트 (processing 상태로 설정)
     await supabase
       .from('upload_history')
       .update({
-        status: 'success',
-        rows_uploaded: totalInserted,
         storage_path: storagePath,
-        error_message: totalSkipped > 0 ? `${totalSkipped}개 행 Skip` : null,
+        status: 'processing',
       })
       .eq('id', historyId);
 
-    const spaceReduction = ((1 - (Object.keys(filteredData[0] || {}).length / Object.keys(rawData[0] || {}).length)) * 100).toFixed(1);
-
-    console.log(`🎉 Upload complete: ${totalInserted} rows inserted`);
-
+    // 4. 백그라운드에서 처리 시작 (비동기, 응답을 기다리지 않음)
+    // 클라이언트에서 처리 API를 호출하도록 안내
     return NextResponse.json({
       success: true,
-      message: 'File uploaded successfully',
-      rowsInserted: totalInserted,
-      rowsSkipped: totalSkipped,
+      message: 'File uploaded successfully. Processing will start shortly.',
       data: {
         historyId,
         fileName: file.name,
-        originalRows: rawData.length,
-        filteredRows: totalInserted,
         storagePath,
-        columnsRemoved: COLUMNS_TO_REMOVE.length,
-        spaceReduction: `${spaceReduction}%`,
+        status: 'processing',
+        needsProcessing: true,
       },
     });
 

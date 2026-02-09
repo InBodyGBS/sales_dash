@@ -100,18 +100,54 @@ export function FileUploader({ entity, onUploadSuccess }: FileUploaderProps) {
       toast.dismiss('upload');
       
       if (result.success) {
-        // 상세 로그 출력
-        console.log('✅ 업로드 성공!');
-        console.log(`📊 원본: ${result.data.originalRows}개 행`);
-        console.log(`💾 저장: ${result.data.filteredRows}개 행`);
-        console.log(`🗑️ 제거된 컬럼: ${result.data.columnsRemoved}개`);
-        console.log(`📉 용량 절감: ${result.data.spaceReduction}`);
+        console.log('✅ 파일 저장 완료!');
         console.log(`📁 저장 경로: ${result.data.storagePath}`);
+        
+        // 파일이 저장되었으면 처리 API 호출
+        if (result.data.needsProcessing && result.data.storagePath) {
+          toast.loading('Processing file...', { id: 'process' });
+          
+          try {
+            const processResponse = await fetch('/api/upload/process', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                storagePath: result.data.storagePath,
+                entity: entity,
+                fileName: result.data.fileName,
+                historyId: result.data.historyId,
+              }),
+            });
 
-        const skipMessage = result.rowsSkipped > 0 ? `, ${result.rowsSkipped} rows skipped` : '';
-        toast.success(
-          `Successfully uploaded ${result.rowsInserted} rows from ${file.name}${skipMessage}`
-        );
+            if (!processResponse.ok) {
+              throw new Error('Processing failed');
+            }
+
+            const processResult = await processResponse.json();
+            toast.dismiss('process');
+            
+            if (processResult.success) {
+              const skipMessage = processResult.rowsSkipped > 0 ? `, ${processResult.rowsSkipped} rows skipped` : '';
+              toast.success(
+                `Successfully processed ${processResult.rowsInserted} rows from ${file.name}${skipMessage}`
+              );
+            } else {
+              throw new Error(processResult.error || 'Processing failed');
+            }
+          } catch (processError) {
+            toast.dismiss('process');
+            toast.error('File uploaded but processing failed. Please try again.');
+            console.error('Processing error:', processError);
+          }
+        } else {
+          // 이미 처리된 경우
+          const skipMessage = result.rowsSkipped > 0 ? `, ${result.rowsSkipped} rows skipped` : '';
+          toast.success(
+            `Successfully uploaded ${result.rowsInserted || 0} rows from ${file.name}${skipMessage}`
+          );
+        }
 
         if (onUploadSuccess) {
           onUploadSuccess();

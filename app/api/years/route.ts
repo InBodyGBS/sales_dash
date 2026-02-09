@@ -8,14 +8,17 @@ export async function GET(request: NextRequest) {
 
     const supabase = await createServiceClient();
     
-    // 모든 데이터를 가져오기 위해 페이지네이션 처리
+    // 효율적으로 고유 연도만 가져오기: 최대 20페이지(20,000행)까지만 확인
+    // 연도는 보통 많지 않으므로 충분함
     const PAGE_SIZE = 1000;
+    const MAX_PAGES = 20; // 타임아웃 방지를 위한 최대 페이지 수
     let allData: any[] = [];
     let page = 0;
     let hasMore = true;
+    const seenYears = new Set<number>();
 
     try {
-      while (hasMore) {
+      while (hasMore && page < MAX_PAGES) {
         const from = page * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
         
@@ -41,6 +44,13 @@ export async function GET(request: NextRequest) {
         }
 
         if (data && data.length > 0) {
+          // 연도만 추출하여 Set에 추가 (중복 제거)
+          data.forEach((row) => {
+            if (row.year != null) {
+              seenYears.add(row.year);
+            }
+          });
+          
           allData = allData.concat(data);
           page++;
           hasMore = data.length === PAGE_SIZE;
@@ -56,11 +66,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get unique years
-    const years = Array.from(new Set(allData.map((d) => d.year).filter((y) => y != null)))
+    // Get unique years from Set and sort
+    const years = Array.from(seenYears)
       .sort((a, b) => b - a);
 
-    console.log(`Fetched ${years.length} unique years for entity: ${entity || 'All'}`);
+    console.log(`Fetched ${years.length} unique years for entity: ${entity || 'All'} (checked ${page} pages)`);
 
     return NextResponse.json({ years });
   } catch (error) {
