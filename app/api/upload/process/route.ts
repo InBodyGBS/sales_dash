@@ -299,26 +299,79 @@ export async function POST(request: NextRequest) {
     // 9. Insert data in batches
     const BATCH_SIZE = 1000;
     let totalInserted = 0;
+    let totalSkipped = 0;
     const errors: any[] = [];
+
+    // 중복 에러 처리 함수
+    const insertBatchWithDuplicateHandling = async (batch: any[], batchNumber: number) => {
+      try {
+        const { data, error: insertError } = await supabase
+          .from('sales_data')
+          .insert(batch)
+          .select();
+
+        if (insertError) {
+          // 중복 에러(23505) 또는 unique constraint 에러인 경우 개별 처리
+          if (insertError.code === '23505' || insertError.message?.includes('duplicate key') || insertError.message?.includes('unique constraint')) {
+            console.log(`⚠️ Batch ${batchNumber}: Duplicate detected, processing individually...`);
+            
+            // 배치를 개별 레코드로 나눠서 처리
+            for (const record of batch) {
+              try {
+                const { data: singleData, error: singleError } = await supabase
+                  .from('sales_data')
+                  .insert([record])
+                  .select();
+
+                if (singleError) {
+                  if (singleError.code === '23505' || singleError.message?.includes('duplicate key') || singleError.message?.includes('unique constraint')) {
+                    // 중복 레코드는 Skip
+                    totalSkipped++;
+                  } else {
+                    // 다른 에러는 기록
+                    errors.push({
+                      batch: batchNumber,
+                      record: record,
+                      error: singleError.message,
+                    });
+                  }
+                } else {
+                  totalInserted += singleData?.length || 1;
+                }
+              } catch (singleRecordError) {
+                errors.push({
+                  batch: batchNumber,
+                  record: record,
+                  error: (singleRecordError as Error).message,
+                });
+              }
+            }
+          } else {
+            // 다른 에러는 그대로 기록
+            console.error(`❌ Batch ${batchNumber} error:`, insertError);
+            errors.push({
+              batch: batchNumber,
+              error: insertError.message,
+            });
+          }
+        } else {
+          totalInserted += data?.length || batch.length;
+          console.log(`✅ Inserted batch ${batchNumber}: ${data?.length || batch.length} rows`);
+        }
+      } catch (batchError) {
+        console.error(`❌ Batch ${batchNumber} exception:`, batchError);
+        errors.push({
+          batch: batchNumber,
+          error: (batchError as Error).message,
+        });
+      }
+    };
 
     for (let i = 0; i < transformedData.length; i += BATCH_SIZE) {
       const batch = transformedData.slice(i, i + BATCH_SIZE);
+      const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
       
-      const { data, error: insertError } = await supabase
-        .from('sales_data')
-        .insert(batch)
-        .select();
-
-      if (insertError) {
-        console.error(`❌ Batch ${i / BATCH_SIZE + 1} error:`, insertError);
-        errors.push({
-          batch: i / BATCH_SIZE + 1,
-          error: insertError.message,
-        });
-      } else {
-        totalInserted += batch.length;
-        console.log(`✅ Inserted batch ${i / BATCH_SIZE + 1}: ${batch.length} rows`);
-      }
+      await insertBatchWithDuplicateHandling(batch, batchNumber);
     }
 
     // 10. Update upload history
@@ -326,21 +379,26 @@ export async function POST(request: NextRequest) {
       ? supabase.from('upload_history').update({
           status: errors.length > 0 ? 'partial' : 'success',
           rows_uploaded: totalInserted,
-          error_message: errors.length > 0 ? JSON.stringify(errors) : null,
+          error_message: errors.length > 0 
+            ? JSON.stringify(errors) 
+            : (totalSkipped > 0 ? `${totalSkipped} rows skipped (duplicates)` : null),
         }).eq('id', historyId)
       : supabase.from('upload_history').update({
           status: errors.length > 0 ? 'partial' : 'success',
           rows_uploaded: totalInserted,
-          error_message: errors.length > 0 ? JSON.stringify(errors) : null,
+          error_message: errors.length > 0 
+            ? JSON.stringify(errors) 
+            : (totalSkipped > 0 ? `${totalSkipped} rows skipped (duplicates)` : null),
         }).eq('batch_id', batchId);
     
     await updateQuery;
 
-    console.log(`✅ Upload complete: ${totalInserted} rows inserted`);
+    console.log(`✅ Upload complete: ${totalInserted} rows inserted, ${totalSkipped} rows skipped`);
 
     return NextResponse.json({
       success: true,
       rowsInserted: totalInserted,
+      rowsSkipped: totalSkipped,
       batchId,
       errors: errors.length > 0 ? errors : undefined,
     });
