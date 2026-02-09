@@ -91,8 +91,8 @@ export default function EntityDashboardPage() {
         fetch(`/api/dashboard/industry-breakdown?year=${year}&entities=${entityParam}`),
       ];
 
-      // Only fetch FG distribution for non-Korot entities
-      const allPromises = entityParam !== 'Korot' 
+      // Only fetch FG distribution for non-Korot, non-BWA, and non-USA entities
+      const allPromises = entityParam !== 'Korot' && entityParam !== 'BWA' && entityParam !== 'USA'
         ? [
             ...basePromises.slice(0, 3),
             fetch(`/api/dashboard/fg-distribution?year=${year}&entities=${entityParam}`),
@@ -115,8 +115,8 @@ export default function EntityDashboardPage() {
       setMonthlyTrend(await monthlyRes.json());
       setQuarterlyComparison(await quarterlyRes.json());
 
-      // Handle FG distribution only for non-Korot entities
-      if (entityParam !== 'Korot') {
+      // Handle FG distribution only for non-Korot, non-BWA, and non-USA entities
+      if (entityParam !== 'Korot' && entityParam !== 'BWA' && entityParam !== 'USA') {
         const [fgRes, countryRes, productsRes, industryRes] = restRes;
         if (!fgRes.ok) throw new Error('Failed to fetch FG distribution');
         if (!countryRes.ok) throw new Error('Failed to fetch country sales');
@@ -218,9 +218,9 @@ export default function EntityDashboardPage() {
           <KPICards data={kpiData} loading={loading} entity={entity} />
 
           {/* Time Trend Section */}
-          {entity === 'Korot' ? (
+          {entity === 'Korot' || entity === 'BWA' || entity === 'USA' ? (
             <>
-              {/* Monthly Trend - Full Width for Korot */}
+              {/* Monthly Trend - Full Width for Korot and BWA */}
               <div className="grid gap-6 md:grid-cols-1">
                 <MonthlyTrendChart data={monthlyTrend} loading={loading} entity={entity} currentYear={parseInt(year)} />
               </div>

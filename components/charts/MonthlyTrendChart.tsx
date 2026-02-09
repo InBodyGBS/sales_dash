@@ -67,9 +67,7 @@ export function MonthlyTrendChart({ data, loading, entity, currentYear }: Monthl
     const chartItem: any = {
       month: monthName,
       amount: currentAmount,
-      qty: monthData?.qty ?? 0,
       prevAmount: prevAmount,
-      prevQty: monthData?.prevQty ?? 0,
     };
     
     // 동적 키 추가 - currentYear가 있을 때만
@@ -161,18 +159,9 @@ export function MonthlyTrendChart({ data, loading, entity, currentYear }: Monthl
             ) : (
               <>
                 <YAxis
-                  yAxisId="left"
-                  orientation="left"
                   domain={yAxisDomain}
                   tickFormatter={(value) => formatCompactCurrency(value, 'USD')}
                   width={60}
-                  tick={{ fontSize: 12 }}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  tickFormatter={(value) => formatNumber(value)}
-                  width={50}
                   tick={{ fontSize: 12 }}
                 />
                 <Tooltip
@@ -186,38 +175,30 @@ export function MonthlyTrendChart({ data, loading, entity, currentYear }: Monthl
                     if (name === 'amount') {
                       return formatCurrency(value, 'USD');
                     }
-                    return formatNumber(value);
+                    return formatCurrency(value, 'USD');
                   }}
                 />
+                <Legend />
                 <Line
-                  yAxisId="left"
                   type="monotone"
                   dataKey={currentYear ? currentYear.toString() : 'amount'}
                   stroke="#3B82F6"
                   strokeWidth={2}
                   name={currentYear ? currentYear.toString() : 'Amount'}
                   dot={{ r: 4 }}
+                  connectNulls={true}
                 />
                 {currentYear && (
                   <Line
-                    yAxisId="left"
                     type="monotone"
                     dataKey={(currentYear - 1).toString()}
                     stroke="#6B7280"
                     strokeWidth={2}
                     name={(currentYear - 1).toString()}
                     dot={{ r: 4 }}
+                    connectNulls={true}
                   />
                 )}
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey="qty"
-                  stroke="#10B981"
-                  strokeWidth={2}
-                  name="Qty"
-                  dot={{ r: 4 }}
-                />
               </>
             )}
           </LineChart>

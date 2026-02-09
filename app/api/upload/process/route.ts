@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
       'Name2': 'name2',
       'Customer invoice account': 'customer_invoice_account',
       'Invoice account': 'invoice_account',
-      'Group': 'group_name',
+      'Group': 'group',
       'Currency': 'currency',
       'Invoice Amount': 'invoice_amount',
       'Invoice Amount_MST': 'invoice_amount_mst',
@@ -222,6 +222,49 @@ export async function POST(request: NextRequest) {
       return null;
     }
 
+    // 숫자 필드 변환 함수 (문자열 "No", "Yes" 등을 null로 처리)
+    function parseNumeric(value: any): number | null {
+      if (value === undefined || value === null || value === '') {
+        return null;
+      }
+      
+      // 문자열이 "No", "Yes", "N/A" 등인 경우 null 반환
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed === '' || 
+            trimmed.toLowerCase() === 'no' || 
+            trimmed.toLowerCase() === 'yes' ||
+            trimmed.toLowerCase() === 'n/a' ||
+            trimmed.toLowerCase() === 'na' ||
+            trimmed.toLowerCase() === 'null' ||
+            trimmed.toLowerCase() === 'undefined') {
+          return null;
+        }
+      }
+      
+      // 숫자로 변환 시도
+      const num = typeof value === 'number' ? value : Number(value);
+      return isNaN(num) ? null : num;
+    }
+
+    // 숫자 타입 컬럼 목록
+    const numericColumns = [
+      'line_number',
+      'quantity',
+      'price_unit',
+      'net_amount',
+      'line_amount_mst',
+      'rebate',
+      'invoice_amount',
+      'invoice_amount_mst',
+      'sales_tax_amount',
+      'sales_tax_amount_accounting',
+      'total_for_invoice',
+      'total_mst',
+      'open_balance',
+      'year',
+    ];
+
     const transformedData = jsonData.map((row: any) => {
       const transformed: any = {
         entity: entity,
@@ -238,7 +281,14 @@ export async function POST(request: NextRequest) {
             transformed.year = parseInt(transformed[dbCol].split('-')[0]);
             transformed.quarter = getQuarter(transformed[dbCol]);
           }
+        } else if (numericColumns.includes(dbCol)) {
+          // 숫자 타입 컬럼은 parseNumeric으로 변환
+          const numValue = parseNumeric(value);
+          if (numValue !== null) {
+            transformed[dbCol] = numValue;
+          }
         } else if (value !== undefined && value !== null && value !== '') {
+          // 문자열 타입 컬럼은 그대로 사용
           transformed[dbCol] = value;
         }
       }
