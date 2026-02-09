@@ -297,81 +297,186 @@ export async function POST(request: NextRequest) {
     });
 
     // 9. Insert data in batches
-    const BATCH_SIZE = 1000;
+    const BATCH_SIZE = 250; // 배치 크기 더 감소 (500 -> 250)
     let totalInserted = 0;
     let totalSkipped = 0;
     const errors: any[] = [];
+    const startTime = Date.now();
+    const MAX_PROCESSING_TIME = 240 * 1000; // 240초 (4분) 타임아웃 - maxDuration(300초)보다 여유 있게
 
-    // 중복 에러 처리 함수
-    const insertBatchWithDuplicateHandling = async (batch: any[], batchNumber: number) => {
-      try {
-        const { data, error: insertError } = await supabase
-          .from('sales_data')
-          .insert(batch)
-          .select();
+    // 타임아웃 체크 함수 (경고만, 에러는 발생시키지 않음)
+    const checkTimeout = () => {
+      const elapsed = Date.now() - startTime;
+      if (elapsed > MAX_PROCESSING_TIME) {
+        console.warn(`⏱️ Processing time exceeded ${MAX_PROCESSING_TIME / 1000}s, but continuing...`);
+        // 타임아웃이 발생해도 계속 진행 (maxDuration이 더 길기 때문)
+      }
+    };
 
-        if (insertError) {
-          // 중복 에러(23505) 또는 unique constraint 에러인 경우 개별 처리
-          if (insertError.code === '23505' || insertError.message?.includes('duplicate key') || insertError.message?.includes('unique constraint')) {
-            console.log(`⚠️ Batch ${batchNumber}: Duplicate detected, processing individually...`);
-            
-            // 배치를 개별 레코드로 나눠서 처리
-            for (const record of batch) {
+    // 재귀적으로 배치를 나눠서 삽입하는 함수 (이진 분할)
+    const insertBatchRecursive = async (batch: any[], minSize: number = 10): Promise<{ inserted: number; skipped: number }> => {
+      checkTimeout();
+
+      // 최소 크기에 도달하면 개별 레코드 처리
+      if (batch.length <= minSize) {
+        let inserted = 0;
+        let skipped = 0;
+
+        // 개별 레코드를 병렬로 처리 (최대 5개씩)
+        const PARALLEL_SIZE = 5;
+        for (let i = 0; i < batch.length; i += PARALLEL_SIZE) {
+          const parallelBatch = batch.slice(i, i + PARALLEL_SIZE);
+          
+          const results = await Promise.allSettled(
+            parallelBatch.map(async (record) => {
               try {
-                const { data: singleData, error: singleError } = await supabase
+                const { data, error } = await supabase
                   .from('sales_data')
                   .insert([record])
                   .select();
 
-                if (singleError) {
-                  if (singleError.code === '23505' || singleError.message?.includes('duplicate key') || singleError.message?.includes('unique constraint')) {
-                    // 중복 레코드는 Skip
-                    totalSkipped++;
+                if (error) {
+                  if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('unique constraint')) {
+                    return { success: false, skipped: true };
                   } else {
-                    // 다른 에러는 기록
                     errors.push({
-                      batch: batchNumber,
-                      record: record,
-                      error: singleError.message,
+                      record: { invoice: record.invoice, invoice_date: record.invoice_date, item_number: record.item_number },
+                      error: error.message,
                     });
+                    return { success: false, skipped: false };
                   }
                 } else {
-                  totalInserted += singleData?.length || 1;
+                  return { success: true, skipped: false };
                 }
-              } catch (singleRecordError) {
+              } catch (recordError) {
                 errors.push({
-                  batch: batchNumber,
-                  record: record,
-                  error: (singleRecordError as Error).message,
+                  record: { invoice: record.invoice, invoice_date: record.invoice_date, item_number: record.item_number },
+                  error: (recordError as Error).message,
                 });
+                return { success: false, skipped: false };
+              }
+            })
+          );
+
+          results.forEach((result) => {
+            if (result.status === 'fulfilled') {
+              if (result.value.success) {
+                inserted++;
+              } else if (result.value.skipped) {
+                skipped++;
               }
             }
+          });
+        }
+
+        return { inserted, skipped };
+      }
+
+      // 배치 삽입 시도
+      try {
+        const { data, error } = await supabase
+          .from('sales_data')
+          .insert(batch)
+          .select();
+
+        if (error) {
+          // 중복 에러인 경우 배치를 반으로 나눠서 재시도
+          if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('unique constraint')) {
+            // 중복 에러 상세 로깅
+            console.log(`⚠️ Duplicate error in batch of ${batch.length} records. Error: ${error.message}`);
+            if (batch.length <= 20) {
+              // 작은 배치일 때는 샘플 레코드 로깅
+              const sample = batch.slice(0, 3).map(r => ({
+                entity: r.entity,
+                invoice: r.invoice,
+                invoice_date: r.invoice_date,
+                item_number: r.item_number,
+                line_number: r.line_number,
+              }));
+              console.log(`Sample records:`, JSON.stringify(sample, null, 2));
+            }
+            
+            const mid = Math.floor(batch.length / 2);
+            const firstHalf = batch.slice(0, mid);
+            const secondHalf = batch.slice(mid);
+
+            const firstResult = await insertBatchRecursive(firstHalf, minSize);
+            const secondResult = await insertBatchRecursive(secondHalf, minSize);
+
+            return {
+              inserted: firstResult.inserted + secondResult.inserted,
+              skipped: firstResult.skipped + secondResult.skipped,
+            };
           } else {
-            // 다른 에러는 그대로 기록
-            console.error(`❌ Batch ${batchNumber} error:`, insertError);
+            // 다른 에러는 기록하고 배치를 반으로 나눠서 재시도
             errors.push({
-              batch: batchNumber,
-              error: insertError.message,
+              batch: batch.length,
+              error: error.message,
             });
+
+            const mid = Math.floor(batch.length / 2);
+            const firstHalf = batch.slice(0, mid);
+            const secondHalf = batch.slice(mid);
+
+            const firstResult = await insertBatchRecursive(firstHalf, minSize);
+            const secondResult = await insertBatchRecursive(secondHalf, minSize);
+
+            return {
+              inserted: firstResult.inserted + secondResult.inserted,
+              skipped: firstResult.skipped + secondResult.skipped,
+            };
           }
         } else {
-          totalInserted += data?.length || batch.length;
-          console.log(`✅ Inserted batch ${batchNumber}: ${data?.length || batch.length} rows`);
+          // 성공
+          return {
+            inserted: data?.length || batch.length,
+            skipped: 0,
+          };
         }
       } catch (batchError) {
-        console.error(`❌ Batch ${batchNumber} exception:`, batchError);
-        errors.push({
-          batch: batchNumber,
-          error: (batchError as Error).message,
-        });
+        // 예외 발생 시 배치를 반으로 나눠서 재시도
+        const mid = Math.floor(batch.length / 2);
+        const firstHalf = batch.slice(0, mid);
+        const secondHalf = batch.slice(mid);
+
+        const firstResult = await insertBatchRecursive(firstHalf, minSize);
+        const secondResult = await insertBatchRecursive(secondHalf, minSize);
+
+        return {
+          inserted: firstResult.inserted + secondResult.inserted,
+          skipped: firstResult.skipped + secondResult.skipped,
+        };
       }
     };
 
+    // 배치 단위로 처리
     for (let i = 0; i < transformedData.length; i += BATCH_SIZE) {
+      checkTimeout();
+
       const batch = transformedData.slice(i, i + BATCH_SIZE);
       const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
-      
-      await insertBatchWithDuplicateHandling(batch, batchNumber);
+      const totalBatches = Math.ceil(transformedData.length / BATCH_SIZE);
+
+      try {
+        const result = await insertBatchRecursive(batch);
+        totalInserted += result.inserted;
+        totalSkipped += result.skipped;
+
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`✅ Batch ${batchNumber}/${totalBatches}: ${result.inserted} inserted, ${result.skipped} skipped (${elapsed}s elapsed)`);
+        
+        // 배치 사이에 짧은 딜레이 추가 (서버 부하 감소)
+        if (i + BATCH_SIZE < transformedData.length) {
+          await new Promise(resolve => setTimeout(resolve, 50)); // 50ms 딜레이
+        }
+      } catch (error) {
+        console.error(`❌ Batch ${batchNumber} error:`, error);
+        // 에러가 발생해도 계속 진행 (부분 완료)
+        errors.push({
+          batch: batchNumber,
+          error: (error as Error).message,
+        });
+      }
     }
 
     // 10. Update upload history
