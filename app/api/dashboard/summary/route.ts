@@ -28,42 +28,79 @@ export async function GET(request: NextRequest) {
     let totalCount = 0;
 
     try {
+      // 먼저 전체 개수를 확인
+      let countQuery = supabase
+        .from('sales_data')
+        .select('*', { count: 'exact', head: true })
+        .eq('year', yearInt);
+
+      if (entities.length > 0 && !entities.includes('All')) {
+        countQuery = countQuery.in('entity', entities);
+      }
+
+      const { count: initialCount, error: countError } = await countQuery;
+      
+      if (countError) {
+        console.error('Count query error:', countError);
+        throw new Error(`Failed to get total count: ${countError.message}`);
+      }
+
+      totalCount = initialCount || 0;
+      console.log(`📊 Total records to fetch: ${totalCount} (year: ${yearInt}, entities: ${entities.join(',')})`);
+
+      // 모든 데이터를 가져올 때까지 반복
       while (hasMore) {
         const from = page * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
         
         // 각 페이지마다 새로운 쿼리 생성
+        // 정렬을 추가하여 일관된 결과 보장 (id로 정렬)
         let query = supabase
           .from('sales_data')
           .select('line_amount_mst, quantity', { count: 'exact', head: false })
-          .eq('year', yearInt);
+          .eq('year', yearInt)
+          .order('id', { ascending: true }); // 정렬 추가로 일관된 결과 보장
 
         // Filter by entities
         if (entities.length > 0 && !entities.includes('All')) {
           query = query.in('entity', entities);
         }
 
-        // range 적용
+        // range 적용 (정렬 후)
         query = query.range(from, to);
 
-        const { data, error, count } = await query;
+        const { data, error } = await query;
         
         if (error) {
           console.error('Database error (page ' + page + '):', error);
           throw new Error(`Database query failed: ${error.message}`);
         }
 
-        if (count !== null && totalCount === 0) {
-          totalCount = count;
-        }
-
         if (data && data.length > 0) {
           allData = allData.concat(data);
           page++;
-          hasMore = data.length === PAGE_SIZE; // 더 가져올 데이터가 있는지 확인
+          
+          // 가져온 데이터가 전체 개수에 도달했는지 확인
+          if (allData.length >= totalCount) {
+            hasMore = false;
+            console.log(`✅ All data fetched: ${allData.length} records (expected: ${totalCount})`);
+          } else {
+            hasMore = data.length === PAGE_SIZE; // 더 가져올 데이터가 있는지 확인
+          }
         } else {
           hasMore = false;
         }
+        
+        // 안전장치: 무한 루프 방지 (최대 1000페이지)
+        if (page > 1000) {
+          console.warn(`⚠️ Maximum page limit reached (1000 pages). Fetched ${allData.length} records out of ${totalCount}`);
+          hasMore = false;
+        }
+      }
+      
+      // 최종 확인: 가져온 데이터 수와 전체 개수 비교
+      if (allData.length < totalCount) {
+        console.warn(`⚠️ Warning: Fetched ${allData.length} records but expected ${totalCount}. Missing ${totalCount - allData.length} records.`);
       }
     } catch (queryError) {
       console.error('Query error:', queryError);
@@ -134,11 +171,14 @@ export async function GET(request: NextRequest) {
     console.log(`📊 Summary API - 연도별 Line Amount_MST 합계 계산:`, {
       year: yearInt,
       entities,
+      전체_레코드_수: totalCount,
       DB에서_가져온_행수: data.length,
+      누락된_레코드_수: totalCount - data.length,
       null_line_amount_mst_개수: nullCount,
       zero_line_amount_mst_개수: zeroCount,
       계산된_Total_Amount: totalAmount,
-      계산된_Total_Amount_포맷: totalAmount.toLocaleString(),
+      계산된_Total_Amount_원: `${totalAmount.toLocaleString()} 원`,
+      계산된_Total_Amount_KRW: `₩${totalAmount.toLocaleString()}`,
       샘플_데이터_타입: typeof data[0]?.line_amount_mst,
       샘플_값: data.slice(0, 3).map(r => ({
         line_amount_mst: r.line_amount_mst,
@@ -147,24 +187,60 @@ export async function GET(request: NextRequest) {
       }))
     });
     
-    console.log(`✅ Total Amount 계산 완료: ${totalAmount.toLocaleString()} (${data.length}개 행)`);
+    console.log(`✅ Total Amount 계산 완료: ${totalAmount.toLocaleString()} 원 (${data.length}개 행 / 전체 ${totalCount}개 행)`);
+    
+    // SQL 쿼리와 비교를 위한 추가 정보 (모든 엔티티에 적용)
+    if (entities.length > 0 && !entities.includes('All')) {
+      const entityList = entities.join(', ');
+      console.log(`🔍 Summary API - 엔티티 디버깅 정보:`, {
+        year: yearInt,
+        entities: entityList,
+        totalAmount: totalAmount,
+        totalAmountFormatted: totalAmount.toLocaleString(),
+        expectedSQL: `SELECT SUM(line_amount_mst) FROM sales_data WHERE entity IN (${entities.map(e => `'${e}'`).join(', ')}) AND year = ${yearInt}`,
+        note: 'SQL에서 확인한 금액과 비교해주세요'
+      });
+    }
 
     // Get previous period data for comparison - 모든 페이지 가져오기
     const prevYear = yearInt - 1;
     let allPrevData: any[] = [];
     let prevPage = 0;
     let prevHasMore = true;
+    let prevTotalCount = 0;
 
     try {
-      while (prevHasMore) {
+      // 먼저 이전 연도 전체 개수를 확인
+      let prevCountQuery = supabase
+        .from('sales_data')
+        .select('*', { count: 'exact', head: true })
+        .eq('year', prevYear);
+
+      if (entities.length > 0 && !entities.includes('All')) {
+        prevCountQuery = prevCountQuery.in('entity', entities);
+      }
+
+      const { count: prevInitialCount, error: prevCountError } = await prevCountQuery;
+      
+      if (prevCountError) {
+        console.error('Previous year count query error:', prevCountError);
+        // 이전 연도 데이터는 필수가 아니므로 에러가 나도 계속 진행
+        prevTotalCount = 0;
+      } else {
+        prevTotalCount = prevInitialCount || 0;
+        console.log(`📊 Previous year total records: ${prevTotalCount} (year: ${prevYear}, entities: ${entities.join(',')})`);
+      }
+
+      while (prevHasMore && prevTotalCount > 0) {
         const from = prevPage * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
         
-        // 각 페이지마다 새로운 쿼리 생성
+        // 각 페이지마다 새로운 쿼리 생성 (정렬 추가)
         let prevQuery = supabase
           .from('sales_data')
           .select('line_amount_mst, quantity', { count: 'exact', head: false })
-          .eq('year', prevYear);
+          .eq('year', prevYear)
+          .order('id', { ascending: true }); // 정렬 추가
 
         if (entities.length > 0 && !entities.includes('All')) {
           prevQuery = prevQuery.in('entity', entities);
@@ -183,10 +259,28 @@ export async function GET(request: NextRequest) {
         if (data && data.length > 0) {
           allPrevData = allPrevData.concat(data);
           prevPage++;
-          prevHasMore = data.length === PAGE_SIZE;
+          
+          // 가져온 데이터가 전체 개수에 도달했는지 확인
+          if (allPrevData.length >= prevTotalCount) {
+            prevHasMore = false;
+            console.log(`✅ All previous year data fetched: ${allPrevData.length} records (expected: ${prevTotalCount})`);
+          } else {
+            prevHasMore = data.length === PAGE_SIZE;
+          }
         } else {
           prevHasMore = false;
         }
+        
+        // 안전장치: 무한 루프 방지
+        if (prevPage > 1000) {
+          console.warn(`⚠️ Maximum page limit reached for previous year (1000 pages). Fetched ${allPrevData.length} records out of ${prevTotalCount}`);
+          prevHasMore = false;
+        }
+      }
+      
+      // 최종 확인
+      if (prevTotalCount > 0 && allPrevData.length < prevTotalCount) {
+        console.warn(`⚠️ Warning: Fetched ${allPrevData.length} previous year records but expected ${prevTotalCount}. Missing ${prevTotalCount - allPrevData.length} records.`);
       }
     } catch (prevQueryError) {
       console.error('Previous year query error:', prevQueryError);

@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { formatCurrency, formatKRW, formatCompactCurrency, formatCompactKRW } from '@/lib/utils/formatters';
+import { formatCurrency, formatKRW, formatVND, formatCompactCurrency, formatCompactKRW, formatCompactVND } from '@/lib/utils/formatters';
 import { Entity } from '@/lib/types/sales';
 
 interface QuarterlyComparisonData {
@@ -20,6 +20,7 @@ interface QuarterlyComparisonChartProps {
 
 export function QuarterlyComparisonChart({ data, currentYear, loading, entity }: QuarterlyComparisonChartProps) {
   const isKRWEntity = entity && ['HQ', 'Healthcare', 'Korot'].includes(entity);
+  const isVNDEntity = entity === 'Vietnam';
   if (loading) {
     return (
       <Card>
@@ -75,12 +76,20 @@ export function QuarterlyComparisonChart({ data, currentYear, loading, entity }:
             <XAxis dataKey="quarter" />
             <YAxis
               domain={yAxisDomain}
-              tickFormatter={(value) => isKRWEntity ? formatCompactKRW(value) : formatCompactCurrency(value, 'USD')}
+              tickFormatter={(value) => {
+                if (isKRWEntity) return formatCompactKRW(value);
+                if (isVNDEntity) return formatCompactVND(value);
+                return formatCompactCurrency(value, 'USD');
+              }}
               width={60}
               tick={{ fontSize: 12 }}
             />
             <Tooltip
-              formatter={(value: number) => isKRWEntity ? formatKRW(value) : formatCurrency(value, 'USD')}
+              formatter={(value: number) => {
+                if (isKRWEntity) return formatKRW(value);
+                if (isVNDEntity) return formatVND(value);
+                return formatCurrency(value, 'USD');
+              }}
             />
             <Legend />
             <Bar

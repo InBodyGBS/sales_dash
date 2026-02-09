@@ -293,6 +293,11 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Industry가 NULL이면 'Other'로 설정
+      if (!transformed.industry || transformed.industry === null || transformed.industry === '') {
+        transformed.industry = 'Other';
+      }
+
       return transformed;
     });
 

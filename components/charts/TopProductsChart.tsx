@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { formatCurrency, formatNumber, formatKRW, formatCompactKRW, formatCompactCurrency } from '@/lib/utils/formatters';
+import { formatCurrency, formatNumber, formatKRW, formatVND, formatCompactKRW, formatCompactCurrency, formatCompactVND } from '@/lib/utils/formatters';
 import { Entity } from '@/lib/types/sales';
 
 interface TopProductsData {
@@ -24,6 +24,7 @@ interface TopProductsChartProps {
 
 export function TopProductsChart({ data, loading, entity }: TopProductsChartProps) {
   const isKRWEntity = entity && ['HQ', 'Healthcare', 'Korot'].includes(entity);
+  const isVNDEntity = entity === 'Vietnam';
   if (loading) {
     return (
       <Card>
@@ -94,7 +95,11 @@ export function TopProductsChart({ data, loading, entity }: TopProductsChartProp
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis 
                   type="number" 
-                  tickFormatter={(value) => isKRWEntity ? formatCompactKRW(value) : formatCompactCurrency(value, 'USD')} 
+                  tickFormatter={(value) => {
+                    if (isKRWEntity) return formatCompactKRW(value);
+                    if (isVNDEntity) return formatCompactVND(value);
+                    return formatCompactCurrency(value, 'USD');
+                  }} 
                 />
                 <YAxis 
                   type="category" 
@@ -107,7 +112,9 @@ export function TopProductsChart({ data, loading, entity }: TopProductsChartProp
                 <Tooltip
                   formatter={(value: number, name: string) => {
                     if (name === 'amount') {
-                      return isKRWEntity ? formatKRW(value) : formatCurrency(value, 'USD');
+                      if (isKRWEntity) return formatKRW(value);
+                      if (isVNDEntity) return formatVND(value);
+                      return formatCurrency(value, 'USD');
                     }
                     return formatNumber(value);
                   }}

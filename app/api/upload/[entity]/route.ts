@@ -119,6 +119,11 @@ function filterAndMapColumns(data: any[], entity: string): any[] {
       }
     });
     
+    // Industry가 NULL이면 'Other'로 설정
+    if (!mapped.industry || mapped.industry === null || mapped.industry === '') {
+      mapped.industry = 'Other';
+    }
+    
     return mapped;
   });
 }

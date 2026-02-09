@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { formatCurrency, formatKRW, formatCompactKRW, formatCompactCurrency } from '@/lib/utils/formatters';
+import { formatCurrency, formatKRW, formatVND, formatCompactKRW, formatCompactCurrency, formatCompactVND } from '@/lib/utils/formatters';
 import { Entity } from '@/lib/types/sales';
 
 interface CountrySalesData {
@@ -18,6 +18,7 @@ interface CountrySalesChartProps {
 
 export function CountrySalesChart({ data, loading, entity }: CountrySalesChartProps) {
   const isKRWEntity = entity && ['HQ', 'Healthcare', 'Korot'].includes(entity);
+  const isVNDEntity = entity === 'Vietnam';
   if (loading) {
     return (
       <Card>
@@ -69,7 +70,11 @@ export function CountrySalesChart({ data, loading, entity }: CountrySalesChartPr
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis 
               type="number" 
-              tickFormatter={(value) => isKRWEntity ? formatCompactKRW(value) : formatCompactCurrency(value, 'USD')} 
+              tickFormatter={(value) => {
+                if (isKRWEntity) return formatCompactKRW(value);
+                if (isVNDEntity) return formatCompactVND(value);
+                return formatCompactCurrency(value, 'USD');
+              }} 
             />
             <YAxis 
               type="category" 
@@ -80,7 +85,11 @@ export function CountrySalesChart({ data, loading, entity }: CountrySalesChartPr
               tick={{ fontSize: 12 }}
             />
             <Tooltip 
-              formatter={(value: number) => isKRWEntity ? formatKRW(value) : formatCurrency(value, 'USD')} 
+              formatter={(value: number) => {
+                if (isKRWEntity) return formatKRW(value);
+                if (isVNDEntity) return formatVND(value);
+                return formatCurrency(value, 'USD');
+              }} 
             />
             <Bar dataKey="amount" fill="#3B82F6" name="Amount" />
           </BarChart>

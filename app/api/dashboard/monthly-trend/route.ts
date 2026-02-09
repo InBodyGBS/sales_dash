@@ -24,16 +24,41 @@ export async function GET(request: NextRequest) {
       let allData: any[] = [];
       let page = 0;
       let hasMore = true;
+      let totalCount = 0;
 
+      // 먼저 전체 개수를 확인
+      let countQuery = supabase
+        .from('sales_data')
+        .select('*', { count: 'exact', head: true })
+        .eq('year', year)
+        .not('invoice_date', 'is', null);
+
+      if (entities.length > 0 && !entities.includes('All')) {
+        countQuery = countQuery.in('entity', entities);
+      }
+
+      const { count: initialCount, error: countError } = await countQuery;
+      
+      if (countError) {
+        console.error(`Count query error (year ${year}):`, countError);
+        throw new Error(`Failed to get total count for year ${year}: ${countError.message}`);
+      }
+
+      totalCount = initialCount || 0;
+      console.log(`📊 Monthly Trend - Total records to fetch for year ${year}: ${totalCount} (entities: ${entities.join(',')})`);
+
+      // 모든 데이터를 가져올 때까지 반복
       while (hasMore) {
         const from = page * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
         
+        // 정렬을 추가하여 일관된 결과 보장
         let query = supabase
           .from('sales_data')
-          .select('invoice_date, line_amount_mst, quantity')
+          .select('invoice_date, line_amount_mst, quantity', { count: 'exact', head: false })
           .eq('year', year)
-          .not('invoice_date', 'is', null);
+          .not('invoice_date', 'is', null)
+          .order('id', { ascending: true }); // 정렬 추가
 
         if (entities.length > 0 && !entities.includes('All')) {
           query = query.in('entity', entities);
@@ -51,10 +76,28 @@ export async function GET(request: NextRequest) {
         if (data && data.length > 0) {
           allData = allData.concat(data);
           page++;
-          hasMore = data.length === PAGE_SIZE;
+          
+          // 가져온 데이터가 전체 개수에 도달했는지 확인
+          if (allData.length >= totalCount) {
+            hasMore = false;
+            console.log(`✅ Monthly Trend - All data fetched for year ${year}: ${allData.length} records (expected: ${totalCount})`);
+          } else {
+            hasMore = data.length === PAGE_SIZE;
+          }
         } else {
           hasMore = false;
         }
+        
+        // 안전장치: 무한 루프 방지 (최대 1000페이지)
+        if (page > 1000) {
+          console.warn(`⚠️ Monthly Trend - Maximum page limit reached for year ${year} (1000 pages). Fetched ${allData.length} records out of ${totalCount}`);
+          hasMore = false;
+        }
+      }
+      
+      // 최종 확인
+      if (allData.length < totalCount) {
+        console.warn(`⚠️ Monthly Trend - Warning: Fetched ${allData.length} records for year ${year} but expected ${totalCount}. Missing ${totalCount - allData.length} records.`);
       }
 
       return allData;
@@ -83,7 +126,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Group by month for current year
-    const currentMonthMap = new Map<number, { amount: number; qty: number }>();
+    const currentMonthMap = new Map<number, { amount: number; qty: number; count: number }>();
+    let nullAmountCount = 0;
+    let zeroAmountCount = 0;
+    
     currentData.forEach((row) => {
       const invoiceDate = row.invoice_date;
       if (!invoiceDate) return;
@@ -92,19 +138,52 @@ export async function GET(request: NextRequest) {
       const month = date.getMonth() + 1; // 1-12
 
       if (!currentMonthMap.has(month)) {
-        currentMonthMap.set(month, { amount: 0, qty: 0 });
+        currentMonthMap.set(month, { amount: 0, qty: 0, count: 0 });
       }
 
       const monthData = currentMonthMap.get(month)!;
-      const amount = Number(row.line_amount_mst || 0);
-      const qty = Number(row.quantity || 0);
       
-      monthData.amount += isNaN(amount) ? 0 : amount;
-      monthData.qty += isNaN(qty) ? 0 : qty;
+      // line_amount_mst 처리
+      if (row.line_amount_mst === null || row.line_amount_mst === undefined) {
+        nullAmountCount++;
+      } else {
+        const amount = Number(row.line_amount_mst);
+        if (isNaN(amount)) {
+          console.warn('Invalid line_amount_mst:', row.line_amount_mst);
+        } else {
+          monthData.amount += amount;
+          monthData.count++;
+          if (amount === 0) zeroAmountCount++;
+        }
+      }
+      
+      // quantity 처리
+      if (row.quantity !== null && row.quantity !== undefined) {
+        const qty = Number(row.quantity);
+        if (!isNaN(qty)) {
+          monthData.qty += qty;
+        }
+      }
+    });
+    
+    // 디버깅: 월별 집계 결과 확인
+    console.log(`📊 Monthly Trend - Current year (${yearInt}) aggregation:`, {
+      totalRecords: currentData.length,
+      nullAmountCount,
+      zeroAmountCount,
+      monthlyBreakdown: Array.from(currentMonthMap.entries()).map(([month, data]) => ({
+        month,
+        amount: data.amount,
+        amountFormatted: data.amount.toLocaleString(),
+        count: data.count
+      }))
     });
 
     // Group by month for previous year
-    const prevMonthMap = new Map<number, { amount: number; qty: number }>();
+    const prevMonthMap = new Map<number, { amount: number; qty: number; count: number }>();
+    let prevNullAmountCount = 0;
+    let prevZeroAmountCount = 0;
+    
     prevData.forEach((row) => {
       const invoiceDate = row.invoice_date;
       if (!invoiceDate) return;
@@ -113,22 +192,54 @@ export async function GET(request: NextRequest) {
       const month = date.getMonth() + 1; // 1-12
 
       if (!prevMonthMap.has(month)) {
-        prevMonthMap.set(month, { amount: 0, qty: 0 });
+        prevMonthMap.set(month, { amount: 0, qty: 0, count: 0 });
       }
 
       const monthData = prevMonthMap.get(month)!;
-      const amount = Number(row.line_amount_mst || 0);
-      const qty = Number(row.quantity || 0);
       
-      monthData.amount += isNaN(amount) ? 0 : amount;
-      monthData.qty += isNaN(qty) ? 0 : qty;
+      // line_amount_mst 처리
+      if (row.line_amount_mst === null || row.line_amount_mst === undefined) {
+        prevNullAmountCount++;
+      } else {
+        const amount = Number(row.line_amount_mst);
+        if (isNaN(amount)) {
+          console.warn('Invalid line_amount_mst (prev year):', row.line_amount_mst);
+        } else {
+          monthData.amount += amount;
+          monthData.count++;
+          if (amount === 0) prevZeroAmountCount++;
+        }
+      }
+      
+      // quantity 처리
+      if (row.quantity !== null && row.quantity !== undefined) {
+        const qty = Number(row.quantity);
+        if (!isNaN(qty)) {
+          monthData.qty += qty;
+        }
+      }
     });
+    
+    // 디버깅: 이전 연도 월별 집계 결과 확인
+    if (prevData.length > 0) {
+      console.log(`📊 Monthly Trend - Previous year (${prevYear}) aggregation:`, {
+        totalRecords: prevData.length,
+        nullAmountCount: prevNullAmountCount,
+        zeroAmountCount: prevZeroAmountCount,
+        monthlyBreakdown: Array.from(prevMonthMap.entries()).map(([month, data]) => ({
+          month,
+          amount: data.amount,
+          amountFormatted: data.amount.toLocaleString(),
+          count: data.count
+        }))
+      });
+    }
 
     // Convert to array and fill missing months with 0
     const result = Array.from({ length: 12 }, (_, i) => {
       const month = i + 1;
-      const current = currentMonthMap.get(month) || { amount: 0, qty: 0 };
-      const previous = prevMonthMap.get(month) || { amount: 0, qty: 0 };
+      const current = currentMonthMap.get(month) || { amount: 0, qty: 0, count: 0 };
+      const previous = prevMonthMap.get(month) || { amount: 0, qty: 0, count: 0 };
       return {
         month,
         amount: current.amount,
@@ -137,6 +248,23 @@ export async function GET(request: NextRequest) {
         prevQty: previous.qty,
       };
     });
+
+    // 디버깅: 최종 결과 확인 (모든 엔티티에 적용)
+    if (entities.length > 0 && !entities.includes('All')) {
+      const entityList = entities.join(', ');
+      console.log(`🔍 Monthly Trend - 엔티티 최종 결과 (year: ${yearInt}, entities: ${entityList}):`, {
+        monthlyAmounts: result.map(r => ({
+          month: r.month,
+          amount: r.amount,
+          amountFormatted: r.amount.toLocaleString(),
+          prevAmount: r.prevAmount,
+          prevAmountFormatted: r.prevAmount.toLocaleString()
+        })),
+        totalAmount: result.reduce((sum, r) => sum + r.amount, 0),
+        totalAmountFormatted: result.reduce((sum, r) => sum + r.amount, 0).toLocaleString(),
+        note: `SQL 쿼리 결과와 비교해주세요: SELECT SUM(line_amount_mst) FROM sales_data WHERE entity IN (${entities.map(e => `'${e}'`).join(', ')}) AND year = ${yearInt} AND EXTRACT(MONTH FROM invoice_date) = [month]`
+      });
+    }
 
     return NextResponse.json(result);
   } catch (error) {

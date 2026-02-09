@@ -91,8 +91,8 @@ export default function EntityDashboardPage() {
         fetch(`/api/dashboard/industry-breakdown?year=${year}&entities=${entityParam}`),
       ];
 
-      // Only fetch FG distribution for non-Korot, non-BWA, non-USA, and non-Vietnam entities
-      const allPromises = entityParam !== 'Korot' && entityParam !== 'BWA' && entityParam !== 'USA' && entityParam !== 'Vietnam'
+      // Only fetch FG distribution for non-Korot, non-BWA, non-USA, non-Vietnam, and non-HQ entities
+      const allPromises = entityParam !== 'Korot' && entityParam !== 'BWA' && entityParam !== 'USA' && entityParam !== 'Vietnam' && entityParam !== 'HQ'
         ? [
             ...basePromises.slice(0, 3),
             fetch(`/api/dashboard/fg-distribution?year=${year}&entities=${entityParam}`),
@@ -115,8 +115,8 @@ export default function EntityDashboardPage() {
       setMonthlyTrend(await monthlyRes.json());
       setQuarterlyComparison(await quarterlyRes.json());
 
-      // Handle FG distribution only for non-Korot, non-BWA, non-USA, and non-Vietnam entities
-      if (entityParam !== 'Korot' && entityParam !== 'BWA' && entityParam !== 'USA' && entityParam !== 'Vietnam') {
+      // Handle FG distribution only for non-Korot, non-BWA, non-USA, non-Vietnam, and non-HQ entities
+      if (entityParam !== 'Korot' && entityParam !== 'BWA' && entityParam !== 'USA' && entityParam !== 'Vietnam' && entityParam !== 'HQ') {
         const [fgRes, countryRes, productsRes, industryRes] = restRes;
         if (!fgRes.ok) throw new Error('Failed to fetch FG distribution');
         if (!countryRes.ok) throw new Error('Failed to fetch country sales');
@@ -218,7 +218,7 @@ export default function EntityDashboardPage() {
           <KPICards data={kpiData} loading={loading} entity={entity} />
 
           {/* Time Trend Section */}
-          {entity === 'Korot' || entity === 'BWA' || entity === 'USA' || entity === 'Vietnam' ? (
+          {entity === 'Korot' || entity === 'BWA' || entity === 'USA' || entity === 'Vietnam' || entity === 'HQ' ? (
             <>
               {/* Monthly Trend - Full Width for Korot and BWA */}
               <div className="grid gap-6 md:grid-cols-1">

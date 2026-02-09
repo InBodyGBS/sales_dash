@@ -18,6 +18,15 @@ export function formatKRW(amount: number): string {
   }).format(amount);
 }
 
+export function formatVND(amount: number): string {
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
 // Compact formatters for Y-axis (M unit only, no K unit)
 export function formatCompactCurrency(amount: number, currency: string = 'USD'): string {
   // Always use M unit, no K unit
@@ -25,6 +34,11 @@ export function formatCompactCurrency(amount: number, currency: string = 'USD'):
 }
 
 export function formatCompactKRW(amount: number): string {
+  // Always use M unit, no K unit
+  return `${(amount / 1000000).toFixed(1)}M`;
+}
+
+export function formatCompactVND(amount: number): string {
   // Always use M unit, no K unit
   return `${(amount / 1000000).toFixed(1)}M`;
 }
