@@ -6,7 +6,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { entity, useMaster } = body;
+    const { entity, useMaster, year } = body;
 
     // If useMaster is true, update all entities with item_master mappings
     // If useMaster is false, update only the specific entity with item_mapping
@@ -19,7 +19,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`🔄 Manual sales_data update requested: ${isMasterUpdate ? 'Master (all entities)' : `Entity: ${entity}`}`);
+    const yearFilter = year ? parseInt(year.toString()) : null;
+    const yearFilterText = yearFilter ? ` (year: ${yearFilter})` : '';
+
+    console.log(`🔄 Manual sales_data update requested: ${isMasterUpdate ? 'Master (all entities)' : `Entity: ${entity}`}${yearFilterText}`);
 
     const supabase = createServiceClient();
 
@@ -346,11 +349,31 @@ export async function POST(request: NextRequest) {
                 console.log(`   🔍 Debug ${itemNumber}: Starting update process with data:`, updateData);
               }
               
-              // First, check if there are records to update
-              const { count: checkCount, error: checkError } = await supabase
+              // Build query with filters
+              let checkQuery = supabase
                 .from('sales_data')
                 .select('id', { count: 'exact', head: true })
                 .eq('item_number', itemNumber);
+              
+              let updateQuery = supabase
+                .from('sales_data')
+                .update(updateData)
+                .eq('item_number', itemNumber);
+              
+              // Add entity filter if not master update
+              if (!isMasterUpdate && entity) {
+                checkQuery = checkQuery.eq('entity', entity);
+                updateQuery = updateQuery.eq('entity', entity);
+              }
+              
+              // Add year filter if specified
+              if (yearFilter) {
+                checkQuery = checkQuery.eq('year', yearFilter);
+                updateQuery = updateQuery.eq('year', yearFilter);
+              }
+              
+              // First, check if there are records to update
+              const { count: checkCount, error: checkError } = await checkQuery;
               
               if (checkError || !checkCount || checkCount === 0) {
                 if (isDebugItem) {
@@ -364,11 +387,7 @@ export async function POST(request: NextRequest) {
               }
               
               // Perform the update
-              const { data: updateResult, error: updateError } = await supabase
-                .from('sales_data')
-                .update(updateData)
-                .eq('item_number', itemNumber)
-                .select('id');
+              const { data: updateResult, error: updateError } = await updateQuery.select('id');
               
               if (updateError) {
                 // Don't log HTML error pages, just the error message

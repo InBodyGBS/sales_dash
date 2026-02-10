@@ -28,16 +28,20 @@ export async function GET(request: NextRequest) {
         
         try {
           // 필터를 먼저 적용하고, 그 다음 정렬, 마지막에 range 적용
+          // Select both year column and invoice_date to extract year from date if needed
           let query = supabase
             .from('sales_data')
-            .select('year');
+            .select('year, invoice_date');
 
           if (entity && entity !== 'All') {
             query = query.eq('entity', entity);
           }
 
-          // 정렬과 range는 마지막에 적용
-          query = query.order('year', { ascending: false }).range(from, to);
+          // 정렬: invoice_date 기준으로 정렬 (year가 null이어도 invoice_date에서 추출 가능)
+          // invoice_date가 null이 아닌 것을 우선
+          query = query.order('invoice_date', { ascending: false, nullsFirst: false })
+                       .order('year', { ascending: false, nullsFirst: false })
+                       .range(from, to);
 
           const { data, error } = await query;
 
@@ -63,9 +67,29 @@ export async function GET(request: NextRequest) {
           if (data && data.length > 0) {
             // Extract unique years from this page
             data.forEach((row: any) => {
-              const year = row?.year;
+              // First try year column (sales_data.year)
+              let year = row?.year;
               if (year != null && year !== undefined && !isNaN(Number(year))) {
-                seenYears.add(Number(year));
+                const yearNum = Number(year);
+                if (yearNum > 1900 && yearNum < 2100) {
+                  seenYears.add(yearNum);
+                }
+              }
+              
+              // Also extract year from invoice_date (in case year column is null or different)
+              const invoiceDate = row?.invoice_date;
+              if (invoiceDate) {
+                try {
+                  const date = new Date(invoiceDate);
+                  if (!isNaN(date.getTime())) {
+                    const yearFromDate = date.getFullYear();
+                    if (yearFromDate > 1900 && yearFromDate < 2100) {
+                      seenYears.add(yearFromDate);
+                    }
+                  }
+                } catch (e) {
+                  // Ignore date parsing errors
+                }
               }
             });
             

@@ -41,6 +41,8 @@ export default function ItemMappingPage() {
   const [editForm, setEditForm] = useState<Partial<ItemMapping>>({});
   const [deletingAll, setDeletingAll] = useState(false);
   const [updatingSalesData, setUpdatingSalesData] = useState(false);
+  const [year, setYear] = useState<number | null>(null);
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
 
   const fetchMappings = useCallback(async () => {
     try {
@@ -79,6 +81,31 @@ export default function ItemMappingPage() {
   useEffect(() => {
     fetchMappings();
   }, [fetchMappings]);
+
+  // Fetch available years
+  useEffect(() => {
+    const fetchYears = async () => {
+      try {
+        const entityParam = useMaster ? null : entity;
+        const url = entityParam ? `/api/years?entity=${entityParam}` : '/api/years';
+        console.log('Item Mapping - Fetching years from:', url, 'entityParam:', entityParam);
+        const res = await fetch(url);
+        const data = await res.json();
+        const years = data.years || [];
+        console.log('Item Mapping - Fetched years:', years, 'for entity:', entityParam);
+        setAvailableYears(years);
+        // Set default year to latest year if available
+        if (years.length > 0 && !year) {
+          setYear(years[0]);
+        }
+      } catch (error) {
+        console.error('Failed to fetch years:', error);
+        setAvailableYears([]);
+      }
+    };
+
+    fetchYears();
+  }, [entity, useMaster]);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     if (acceptedFiles.length === 0) return;
@@ -365,6 +392,8 @@ export default function ItemMappingPage() {
       ? 'Master Item Mapping (모든 엔티티)' 
       : `${entity} 엔티티의 Item Mapping`;
     
+    const yearText = year ? ` (${year}년)` : ' (전체 연도)';
+    
     if (!useMaster && !ENTITIES_REQUIRING_MAPPING.includes(entity)) {
       toast.error('이 엔티티는 Item Mapping을 사용하지 않습니다');
       return;
@@ -379,7 +408,8 @@ export default function ItemMappingPage() {
         },
         body: JSON.stringify({ 
           entity: useMaster ? null : entity,
-          useMaster: useMaster 
+          useMaster: useMaster,
+          year: year || undefined
         }),
       });
 
@@ -389,7 +419,7 @@ export default function ItemMappingPage() {
       }
 
       const data = await response.json();
-      toast.success(`${targetName}이(가) sales_data에 반영되었습니다 (${data.updatedCount}개 레코드 업데이트)`);
+      toast.success(`${targetName}${yearText}이(가) sales_data에 반영되었습니다 (${data.updatedCount}개 레코드 업데이트)`);
     } catch (error) {
       console.error('Failed to update sales_data:', error);
       toast.error((error as Error).message || 'Sales Data 업데이트에 실패했습니다');
@@ -605,24 +635,54 @@ export default function ItemMappingPage() {
         {/* Mapping List */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="space-y-4">
               <div>
-                <CardTitle>Item Mapping 목록</CardTitle>
-                <CardDescription>
+                <CardTitle className="text-2xl">Item Mapping 목록</CardTitle>
+                <CardDescription className="mt-1">
                   {useMaster ? 'Master Item Mapping 데이터 (모든 Entity 공통)' : `${entity} 엔티티의 Item Mapping 데이터`}
                 </CardDescription>
               </div>
-              <div className="flex items-center gap-2">
-                {mappings.length > 0 && (
-                  <>
+              
+              {mappings.length > 0 && (
+                <div className="flex flex-wrap items-center gap-3 pt-2 border-t">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="update-year" className="text-sm font-medium whitespace-nowrap">
+                      업데이트 연도:
+                    </Label>
+                    <Select
+                      value={year?.toString() || 'all'}
+                      onValueChange={(value) => {
+                        setYear(value === 'all' ? null : parseInt(value));
+                      }}
+                    >
+                      <SelectTrigger id="update-year" className="w-[140px]">
+                        <SelectValue placeholder="연도 선택" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">전체 연도</SelectItem>
+                        {availableYears.map((y) => (
+                          <SelectItem key={y} value={y.toString()}>
+                            {y}년
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 ml-auto">
                     <Button 
-                      variant="outline" 
+                      variant="default" 
                       size="sm" 
                       onClick={handleUpdateSalesData}
                       disabled={updatingSalesData || loading}
+                      className="min-w-[160px]"
                     >
                       <Upload className="h-4 w-4 mr-2" />
                       {updatingSalesData ? '업데이트 중...' : 'Sales Data 업데이트'}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleExport}>
+                      <Download className="h-4 w-4 mr-2" />
+                      Export CSV
                     </Button>
                     <Button 
                       variant="destructive" 
@@ -633,13 +693,9 @@ export default function ItemMappingPage() {
                       <Trash2 className="h-4 w-4 mr-2" />
                       {deletingAll ? '삭제 중...' : '전체 삭제'}
                     </Button>
-                    <Button variant="outline" size="sm" onClick={handleExport}>
-                      <Download className="h-4 w-4 mr-2" />
-                      Export CSV
-                    </Button>
-                  </>
-                )}
-              </div>
+                  </div>
+                </div>
+              )}
             </div>
           </CardHeader>
           <CardContent>

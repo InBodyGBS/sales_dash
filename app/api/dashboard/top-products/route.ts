@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
         // 정렬을 추가하여 일관된 결과 보장
         let query = supabase
           .from('sales_data')
-          .select('product_name, product, line_amount_mst, quantity, fg_classification', { count: 'exact', head: false })
+          .select('product_name, product, line_amount_mst, quantity, fg_classification, category', { count: 'exact', head: false })
           .eq('year', yearInt)
           .order('id', { ascending: true }); // 정렬 추가
 
@@ -139,13 +139,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json([]);
     }
 
-    // Group by product
-    const productMap = new Map<string, { amount: number; qty: number }>();
+    // Group by product with category
+    const productMap = new Map<string, { amount: number; qty: number; category: string | null }>();
     let nullAmountCount = 0;
     let zeroAmountCount = 0;
 
     data.forEach((row) => {
       const product = row.product || row.product_name || 'Unknown';
+      // Use the first non-null category for each product
+      const category = row.category && row.category.trim() !== '' ? row.category.trim() : null;
       
       // line_amount_mst 처리
       if (row.line_amount_mst === null || row.line_amount_mst === undefined) {
@@ -156,7 +158,13 @@ export async function GET(request: NextRequest) {
           console.warn('Invalid line_amount_mst:', row.line_amount_mst);
         } else {
           if (!productMap.has(product)) {
-            productMap.set(product, { amount: 0, qty: 0 });
+            productMap.set(product, { amount: 0, qty: 0, category });
+          } else {
+            // If product exists but category is null, update with non-null category
+            const existing = productMap.get(product)!;
+            if (!existing.category && category) {
+              existing.category = category;
+            }
           }
           const productData = productMap.get(product)!;
           productData.amount += amount;
@@ -169,7 +177,13 @@ export async function GET(request: NextRequest) {
         const qty = Number(row.quantity);
         if (!isNaN(qty)) {
           if (!productMap.has(product)) {
-            productMap.set(product, { amount: 0, qty: 0 });
+            productMap.set(product, { amount: 0, qty: 0, category });
+          } else {
+            // If product exists but category is null, update with non-null category
+            const existing = productMap.get(product)!;
+            if (!existing.category && category) {
+              existing.category = category;
+            }
           }
           const productData = productMap.get(product)!;
           productData.qty += qty;
@@ -203,12 +217,85 @@ export async function GET(request: NextRequest) {
         product,
         amount: data.amount,
         qty: data.qty,
+        category: data.category,
       }));
 
-    // Return both sorted by amount and by quantity
+    // Get unique categories from allProducts (from aggregated data)
+    const categoriesFromProducts = Array.from(new Set(
+      allProducts
+        .map(p => p.category)
+        .filter((cat): cat is string => {
+          return cat !== null && cat !== undefined && typeof cat === 'string' && cat.trim() !== '';
+        })
+    ));
+
+    // Also get all unique categories directly from raw data to ensure we don't miss any
+    const categoriesFromRawData = Array.from(new Set(
+      data
+        .map(row => row.category)
+        .filter((cat): cat is string => {
+          return cat !== null && cat !== undefined && typeof cat === 'string' && cat.trim() !== '';
+        })
+    ));
+
+    // Additionally, query database directly for all unique categories (for the given year and entities)
+    // This ensures we get ALL categories even if they don't appear in the top products
+    let categoriesFromDB: string[] = [];
+    try {
+      let categoryQuery = supabase
+        .from('sales_data')
+        .select('category')
+        .eq('year', yearInt)
+        .not('category', 'is', null);
+
+      if (entities.length > 0 && !entities.includes('All')) {
+        categoryQuery = categoryQuery.in('entity', entities);
+      }
+
+      if (useFGFilter) {
+        categoryQuery = categoryQuery.eq('fg_classification', 'FG');
+      }
+
+      const { data: categoryData, error: categoryError } = await categoryQuery;
+
+      if (categoryError) {
+        console.error('❌ Error fetching categories from DB:', categoryError);
+      } else if (categoryData) {
+        categoriesFromDB = Array.from(new Set(
+          categoryData
+            .map(row => row.category)
+            .filter((cat): cat is string => {
+              return cat !== null && cat !== undefined && typeof cat === 'string' && cat.trim() !== '';
+            })
+        ));
+        console.log(`✅ Fetched ${categoriesFromDB.length} categories from DB:`, categoriesFromDB);
+      } else {
+        console.warn('⚠️ No category data returned from DB query');
+      }
+    } catch (error) {
+      console.error('❌ Exception while fetching categories from database:', error);
+    }
+
+    // Combine all sources and get unique categories
+    const allCategories = Array.from(new Set([
+      ...categoriesFromProducts,
+      ...categoriesFromRawData,
+      ...categoriesFromDB
+    ])).sort();
+
+    // Debug: Log all categories found
+    console.log(`📊 Top Products - Categories from products: ${categoriesFromProducts.length}`, categoriesFromProducts);
+    console.log(`📊 Top Products - Categories from raw data: ${categoriesFromRawData.length}`, categoriesFromRawData);
+    console.log(`📊 Top Products - Categories from DB: ${categoriesFromDB.length}`, categoriesFromDB);
+    console.log(`📊 Top Products - All unique categories: ${allCategories.length}`, allCategories);
+    console.log(`📊 Top Products - Total products: ${allProducts.length}, Products with category: ${allProducts.filter(p => p.category).length}`);
+
+    // Return both sorted by amount and by quantity, with categories
     const result = {
       byAmount: [...allProducts].sort((a, b) => b.amount - a.amount).slice(0, limit),
       byQuantity: [...allProducts].sort((a, b) => b.qty - a.qty).slice(0, limit),
+      categories: allCategories, // Use all categories from both sources
+      allProducts, // Include all products for client-side filtering
     };
 
     return NextResponse.json(result);

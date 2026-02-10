@@ -63,17 +63,29 @@ export async function POST(request: NextRequest) {
       const { data: itemMasters, error: itemMasterError } = masterResult;
       const { data: itemMappings, error: itemMappingError } = mappingResult;
 
+      // Helper function to normalize item_number (trim and handle case)
+      const normalizeItemNumber = (itemNumber: string | null | undefined): string | null => {
+        if (!itemNumber) return null;
+        const trimmed = itemNumber.toString().trim();
+        return trimmed === '' ? null : trimmed;
+      };
+
       // First, load all item_master mappings (priority)
       if (!itemMasterError && itemMasters && itemMasters.length > 0) {
+        let masterCount = 0;
         itemMasters.forEach((mapping: any) => {
-          itemMappingMap.set(mapping.item_number, {
-            fg_classification: mapping.fg_classification || undefined,
-            category: mapping.category || undefined,
-            model: mapping.model || undefined,
-            product: mapping.product || undefined,
-          });
+          const normalizedItemNumber = normalizeItemNumber(mapping.item_number);
+          if (normalizedItemNumber) {
+            itemMappingMap.set(normalizedItemNumber, {
+              fg_classification: mapping.fg_classification || undefined,
+              category: mapping.category || undefined,
+              model: mapping.model || undefined,
+              product: mapping.product || undefined,
+            });
+            masterCount++;
+          }
         });
-        console.log(`✅ Loaded ${itemMasters.length} item mappings from item_master`);
+        console.log(`✅ Loaded ${masterCount} item mappings from item_master (${itemMasters.length} total, ${itemMasters.length - masterCount} skipped due to empty item_number)`);
       } else if (itemMasterError && itemMasterError.code !== '42P01') {
         // Only warn if it's not a "table doesn't exist" error
         console.warn('⚠️ Failed to load item_master:', itemMasterError.message);
@@ -83,15 +95,18 @@ export async function POST(request: NextRequest) {
       if (!itemMappingError && itemMappings && itemMappings.length > 0) {
         let fallbackCount = 0;
         itemMappings.forEach((mapping: any) => {
-          // Only add if not already in map (master has priority)
-          if (!itemMappingMap.has(mapping.item_number)) {
-            itemMappingMap.set(mapping.item_number, {
-              fg_classification: mapping.fg_classification || undefined,
-              category: mapping.category || undefined,
-              model: mapping.model || undefined,
-              product: mapping.product || undefined,
-            });
-            fallbackCount++;
+          const normalizedItemNumber = normalizeItemNumber(mapping.item_number);
+          if (normalizedItemNumber) {
+            // Only add if not already in map (master has priority)
+            if (!itemMappingMap.has(normalizedItemNumber)) {
+              itemMappingMap.set(normalizedItemNumber, {
+                fg_classification: mapping.fg_classification || undefined,
+                category: mapping.category || undefined,
+                model: mapping.model || undefined,
+                product: mapping.product || undefined,
+              });
+              fallbackCount++;
+            }
           }
         });
         if (fallbackCount > 0) {
@@ -628,21 +643,32 @@ export async function POST(request: NextRequest) {
       }
 
       // Item Mapping 적용 (Japan, China 등)
+      // 규칙: 1) item_master에 동일 item_number가 있으면 먼저 mapping
+      //       2) 없다면 item_mapping에서 동일 entity의 값을 가져오기
       if (requiresItemMapping && transformed.item_number) {
-        const itemMapping = itemMappingMap.get(transformed.item_number);
-        if (itemMapping) {
-          // 매핑된 값이 있으면 덮어쓰기
-          if (itemMapping.fg_classification !== undefined) {
-            transformed.fg_classification = itemMapping.fg_classification;
-          }
-          if (itemMapping.category !== undefined) {
-            transformed.category = itemMapping.category;
-          }
-          if (itemMapping.model !== undefined) {
-            transformed.model = itemMapping.model;
-          }
-          if (itemMapping.product !== undefined) {
-            transformed.product = itemMapping.product;
+        // Normalize item_number (trim whitespace)
+        const normalizedItemNumber = transformed.item_number.toString().trim();
+        if (normalizedItemNumber) {
+          const itemMapping = itemMappingMap.get(normalizedItemNumber);
+          if (itemMapping) {
+            // 매핑된 값이 있으면 덮어쓰기 (null이 아닌 값만)
+            if (itemMapping.fg_classification !== undefined && itemMapping.fg_classification !== null) {
+              transformed.fg_classification = itemMapping.fg_classification;
+            }
+            if (itemMapping.category !== undefined && itemMapping.category !== null) {
+              transformed.category = itemMapping.category;
+            }
+            if (itemMapping.model !== undefined && itemMapping.model !== null) {
+              transformed.model = itemMapping.model;
+            }
+            if (itemMapping.product !== undefined && itemMapping.product !== null) {
+              transformed.product = itemMapping.product;
+            }
+          } else {
+            // Debug: Log when item_number is not found in mapping
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`⚠️ Item number "${normalizedItemNumber}" not found in item mapping`);
+            }
           }
         }
       }

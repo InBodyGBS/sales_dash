@@ -74,19 +74,19 @@ export function IndustryBreakdownChart({ data, loading }: IndustryBreakdownChart
         <CardDescription>Sales by industry</CardDescription>
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={300}>
+        <ResponsiveContainer width="100%" height={400}>
           <PieChart>
             <Pie
               data={chartData}
               cx="50%"
-              cy="50%"
+              cy="45%"
               labelLine={false}
               label={({ name, percentage }) => {
                 if (percentage < 3) return ''; // Hide small labels
                 return `${name}: ${percentage.toFixed(1)}%`;
               }}
-              outerRadius={100}
-              innerRadius={60}
+              outerRadius={90}
+              innerRadius={55}
               fill="#8884d8"
               dataKey="value"
             >
@@ -105,7 +105,12 @@ export function IndustryBreakdownChart({ data, loading }: IndustryBreakdownChart
                 return value;
               }}
             />
-            <Legend />
+            <Legend 
+              verticalAlign="bottom" 
+              height={80}
+              wrapperStyle={{ paddingTop: '20px' }}
+              iconType="square"
+            />
           </PieChart>
         </ResponsiveContainer>
       </CardContent>
