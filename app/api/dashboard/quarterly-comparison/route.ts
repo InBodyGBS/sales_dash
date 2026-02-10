@@ -22,7 +22,8 @@ export async function GET(request: NextRequest) {
     console.log(`📊 Quarterly Comparison API - Received year parameter: "${year}", parsed as: ${currentYear}, entities: ${entities.join(',')}`);
 
     // 모든 데이터를 가져오기 위해 페이지네이션 처리
-    const PAGE_SIZE = 5000; // 페이지 크기 증가로 속도 개선
+    // Supabase PostgREST의 기본 max-rows 제한이 1000이므로 PAGE_SIZE를 1000으로 설정
+    const PAGE_SIZE = 1000; // 페이지 크기 증가로 속도 개선
     
     // Get current year data - 모든 페이지 가져오기
     let allCurrentData: any[] = [];

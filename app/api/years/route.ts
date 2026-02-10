@@ -11,130 +11,99 @@ export async function GET(request: NextRequest) {
     const supabase = createServiceClient();
     console.log('✅ Supabase client created');
     
-    // Use pagination to get all years (Supabase returns max 1000 rows per query)
-    const PAGE_SIZE = 1000;
-    const MAX_PAGES = 100; // 최대 100,000행까지 확인 (모든 연도를 찾기 위해)
-    const seenYears = new Set<number>();
-    let page = 0;
-    let hasMore = true;
-
-    console.log('🔄 Starting pagination to fetch all years...');
+    // 최적화된 방법: PostgreSQL RPC 함수를 사용하여 DISTINCT year 직접 쿼리
+    console.log('🔄 Fetching distinct years using RPC function...');
     
     try {
-      while (hasMore && page < MAX_PAGES) {
-        const from = page * PAGE_SIZE;
-        const to = from + PAGE_SIZE - 1;
-        console.log(`📄 Fetching page ${page + 1} (rows ${from}-${to})...`);
+      // RPC 함수를 사용하여 고유 연도만 가져오기 (매우 빠름!)
+      const { data, error } = await supabase
+        .rpc('get_distinct_years', { 
+          entity_name: entity && entity !== 'All' ? entity : null 
+        });
+
+      if (error) {
+        console.error('❌ RPC error:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        });
         
-        try {
-          // 필터를 먼저 적용하고, 그 다음 정렬, 마지막에 range 적용
-          // Select both year column and invoice_date to extract year from date if needed
-          let query = supabase
-            .from('sales_data')
-            .select('year, invoice_date');
-
-          if (entity && entity !== 'All') {
-            query = query.eq('entity', entity);
-          }
-
-          // 정렬: year 기준으로 정렬 (모든 연도를 찾기 위해)
-          // year가 null이 아닌 것을 우선, 그 다음 invoice_date
-          query = query.order('year', { ascending: false, nullsFirst: false })
-                       .order('invoice_date', { ascending: false, nullsFirst: false })
-                       .range(from, to);
-
-          const { data, error } = await query;
-
-          if (error) {
-            console.error(`❌ Database error (page ${page}):`, {
-              code: error.code,
-              message: error.message,
-              details: error.details,
-              hint: error.hint,
-            });
-            
-            // If it's a "table not found" error, return empty array
-            if (error.code === '42P01' || error.code === 'PGRST116' || error.code === 'PGRST205') {
-              console.warn('Table does not exist, returning empty years array');
-              return NextResponse.json({ years: [] });
-            }
-            
-            // For other errors, try to continue with next page or return what we have
-            console.warn(`⚠️ Error on page ${page + 1}, stopping pagination`);
-            break;
-          }
-
-          if (data && data.length > 0) {
-            // Extract unique years from this page
-            data.forEach((row: any) => {
-              // First try year column (sales_data.year) - 이것이 가장 정확함
-              let year = row?.year;
-              if (year != null && year !== undefined) {
-                const yearNum = Number(year);
-                if (!isNaN(yearNum) && yearNum > 1900 && yearNum < 2100) {
-                  seenYears.add(yearNum);
-                }
-              }
-              
-              // Also extract year from invoice_date (year column이 null이거나 없을 경우를 대비)
-              const invoiceDate = row?.invoice_date;
-              if (invoiceDate) {
-                try {
-                  const date = new Date(invoiceDate);
-                  if (!isNaN(date.getTime())) {
-                    const yearFromDate = date.getFullYear();
-                    if (yearFromDate > 1900 && yearFromDate < 2100) {
-                      seenYears.add(yearFromDate);
-                    }
-                  }
-                } catch (e) {
-                  // Ignore date parsing errors
-                }
-              }
-            });
-            
-            console.log(`   Page ${page + 1}: Found ${data.length} rows, ${seenYears.size} unique years so far:`, Array.from(seenYears).sort((a, b) => b - a));
-            
-            console.log(`   Page ${page + 1}: Found ${data.length} rows, ${seenYears.size} unique years so far`);
-            
-            page++;
-            hasMore = data.length === PAGE_SIZE;
-          } else {
-            hasMore = false;
-          }
-        } catch (pageError) {
-          console.error(`❌ Error on page ${page + 1}:`, {
-            error: pageError instanceof Error ? pageError.message : String(pageError),
-            stack: pageError instanceof Error ? pageError.stack : undefined,
+        // If RPC function doesn't exist, return empty array with warning
+        if (error.code === '42883' || error.message?.includes('function') || error.message?.includes('does not exist')) {
+          console.warn('⚠️ RPC function get_distinct_years does not exist. Please run database/create-get-distinct-years-function.sql');
+          return NextResponse.json({ 
+            years: [],
+            warning: 'Database function not found. Please contact administrator.'
           });
-          // Continue with next page or break if too many errors
-          break;
         }
+        
+        // If it's a "table not found" error, return empty array
+        if (error.code === '42P01' || error.code === 'PGRST116' || error.code === 'PGRST205') {
+          console.warn('Table does not exist, returning empty years array');
+          return NextResponse.json({ years: [] });
+        }
+        
+        return NextResponse.json(
+          { 
+            error: 'Failed to fetch years', 
+            details: error.message,
+            code: error.code,
+          },
+          { status: 500 }
+        );
       }
 
-      // Get unique years and sort (descending)
-      const years = Array.from(seenYears)
-        .filter((y) => !isNaN(y))
-        .sort((a, b) => b - a);
+      // RPC function returns array of {year: number}
+      const years: number[] = [];
+      if (data && Array.isArray(data)) {
+        console.log(`   Found ${data.length} distinct years from RPC`);
+        data.forEach((row: any) => {
+          const year = row?.year || row;
+          if (year != null && !isNaN(Number(year))) {
+            const yearNum = Number(year);
+            if (yearNum > 1900 && yearNum < 2100) {
+              years.push(yearNum);
+            }
+          }
+        });
+      }
 
-      console.log(`✅ Fetched ${years.length} unique years for entity: ${entity || 'All'} (checked ${page} pages):`, years);
+      // Sort descending (should already be sorted by RPC, but just in case)
+      years.sort((a, b) => b - a);
+
+      console.log(`✅ Fetched ${years.length} unique years for entity: ${entity || 'All'}:`, years);
+      
+      // If no years found but entity was specified, log a warning
+      if (years.length === 0 && entity && entity !== 'All') {
+        console.warn(`⚠️ No years found for entity: ${entity}. This may indicate missing data or year column issues.`);
+      }
 
       return NextResponse.json({ years });
-    } catch (paginationError) {
-      console.error('❌ Pagination error:', {
-        error: paginationError instanceof Error ? paginationError.message : String(paginationError),
-        stack: paginationError instanceof Error ? paginationError.stack : undefined,
+    } catch (queryError) {
+      console.error('❌ Query error:', {
+        error: queryError instanceof Error ? queryError.message : String(queryError),
+        stack: queryError instanceof Error ? queryError.stack : undefined,
       });
-      // Return what we have so far, or empty array
-      const years = Array.from(seenYears)
-        .filter((y) => !isNaN(y))
-        .sort((a, b) => b - a);
-      return NextResponse.json({ years });
+      return NextResponse.json(
+        { 
+          error: 'Failed to fetch years', 
+          details: queryError instanceof Error ? queryError.message : String(queryError),
+        },
+        { status: 500 }
+      );
     }
   } catch (error) {
-    console.error('Years API error:', error);
+    console.error('❌ Years API error:', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      name: error instanceof Error ? error.name : typeof error,
+    });
     return NextResponse.json(
-      { error: 'Failed to fetch years', details: (error as Error).message },
+      { 
+        error: 'Failed to fetch years', 
+        details: error instanceof Error ? error.message : String(error),
+      },
       { status: 500 }
     );
   }

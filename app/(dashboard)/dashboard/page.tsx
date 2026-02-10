@@ -28,38 +28,11 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchAvailableEntities();
+    // 모든 entity를 항상 표시 (years API 체크 없이)
+    // 데이터가 없으면 entity dashboard 페이지에서 처리
+    setEntitiesWithYears(new Set(ENTITIES));
+    setLoading(false);
   }, []);
-
-  const fetchAvailableEntities = async () => {
-    try {
-      // Check which entities have years data
-      // Show all entities, but mark which ones have valid years
-      const entityChecks = await Promise.all(
-        ENTITIES.map(async (entity) => {
-          try {
-            const res = await fetch(`/api/years?entity=${entity}`);
-            const data = await res.json();
-            // Return entity if it has years
-            return data.years && data.years.length > 0 ? entity : null;
-          } catch {
-            // On error, return null (will still show entity but mark as "no data")
-            return null;
-          }
-        })
-      );
-
-      // Track which entities have years
-      const withYears = new Set<Entity>(
-        entityChecks.filter((e): e is Entity => e !== null)
-      );
-      setEntitiesWithYears(withYears);
-    } catch (error) {
-      console.error('Failed to fetch available entities:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleEntitySelect = (entity: Entity) => {
     router.push(`/dashboard/${entity}`);
@@ -124,34 +97,17 @@ export default function DashboardPage() {
             return (
               <Card
                 key={entity}
-                className={`p-6 cursor-pointer transition-all hover:shadow-lg ${
-                  hasYears
-                    ? 'hover:border-primary'
-                    : 'opacity-60'
-                }`}
+                className="p-6 cursor-pointer transition-all hover:shadow-lg hover:border-primary"
                 onClick={() => handleEntitySelect(entity)}
               >
                 <div className="flex flex-col items-center text-center space-y-4">
-                  <div
-                    className={`p-4 rounded-full ${
-                      hasYears ? 'bg-primary/10' : 'bg-muted'
-                    }`}
-                  >
-                    <Building2
-                      className={`h-8 w-8 ${
-                        hasYears ? 'text-primary' : 'text-muted-foreground'
-                      }`}
-                    />
+                  <div className="p-4 rounded-full bg-primary/10">
+                    <Building2 className="h-8 w-8 text-primary" />
                   </div>
                   <div>
                     <h3 className="text-xl font-semibold mb-1">
                       {ENTITY_DISPLAY_NAMES[entity]}
                     </h3>
-                    {!hasYears && (
-                      <p className="text-sm text-muted-foreground">
-                        No data available
-                      </p>
-                    )}
                   </div>
                   <Button
                     variant="outline"

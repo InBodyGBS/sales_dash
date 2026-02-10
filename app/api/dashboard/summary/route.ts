@@ -24,7 +24,8 @@ export async function GET(request: NextRequest) {
     // 모든 페이지를 반복해서 가져와서 전체 합계 계산
     
     // 모든 데이터를 가져오기 위해 페이지네이션 처리
-    const PAGE_SIZE = 5000; // 페이지 크기 증가로 속도 개선
+    // Supabase PostgREST의 기본 max-rows 제한이 1000이므로 PAGE_SIZE를 1000으로 설정
+    const PAGE_SIZE = 1000;
     let allData: any[] = [];
     let page = 0;
     let hasMore = true;
@@ -71,6 +72,7 @@ export async function GET(request: NextRequest) {
         }
 
         // range 적용 (정렬 후)
+        // Supabase의 기본 limit이 1000이므로 명시적으로 설정하지 않으면 1000개만 반환됨
         query = query.range(from, to);
 
         const { data, error } = await query;

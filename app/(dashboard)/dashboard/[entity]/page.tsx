@@ -68,13 +68,26 @@ export default function EntityDashboardPage() {
 
   const fetchYears = async () => {
     try {
+      console.log(`🔍 Fetching years for entity: ${entity}`);
       const res = await fetch(`/api/years?entity=${entity}`);
+      console.log(`📡 Years API response status: ${res.status}`);
+      
+      if (!res.ok) {
+        console.error(`❌ Years API failed for ${entity}:`, res.status, res.statusText);
+        return;
+      }
+      
       const data = await res.json();
+      console.log(`📅 Years data for ${entity}:`, data);
+      
       if (data.years && data.years.length > 0 && !year) {
+        console.log(`✅ Setting year to: ${data.years[0]} for entity: ${entity}`);
         setYear(String(data.years[0]));
+      } else {
+        console.warn(`⚠️ No years found for entity: ${entity}`);
       }
     } catch (error) {
-      console.error('Failed to fetch years:', error);
+      console.error(`❌ Failed to fetch years for ${entity}:`, error);
     }
   };
 
@@ -93,9 +106,10 @@ export default function EntityDashboardPage() {
         fetch(`/api/dashboard/industry-breakdown?year=${year}&entities=${entityParam}`),
       ];
 
-      // Only fetch FG distribution for non-Korot, non-BWA, non-USA, non-Vietnam, and non-HQ entities
-      // Japan and China also show FG distribution
-      const allPromises = entityParam !== 'Korot' && entityParam !== 'BWA' && entityParam !== 'USA' && entityParam !== 'Vietnam' && entityParam !== 'HQ'
+      // Only fetch FG distribution for Japan, China, and Healthcare
+      // USA, HQ, Vietnam, Korot, BWA do NOT show FG distribution
+      const entitiesWithFG = ['Japan', 'China', 'Healthcare'];
+      const allPromises = entitiesWithFG.includes(entityParam)
         ? [
             ...basePromises.slice(0, 3),
             fetch(`/api/dashboard/fg-distribution?year=${year}&entities=${entityParam}`),
@@ -118,9 +132,8 @@ export default function EntityDashboardPage() {
       setMonthlyTrend(await monthlyRes.json());
       setQuarterlyComparison(await quarterlyRes.json());
 
-      // Handle FG distribution only for non-Korot, non-BWA, non-USA, non-Vietnam, and non-HQ entities
-      // Japan and China also show FG distribution
-      if (entityParam !== 'Korot' && entityParam !== 'BWA' && entityParam !== 'USA' && entityParam !== 'Vietnam' && entityParam !== 'HQ') {
+      // Handle FG distribution only for Japan, China, and Healthcare
+      if (entitiesWithFG.includes(entityParam)) {
         const [fgRes, channelRes, productsRes, industryRes] = restRes;
         if (!fgRes.ok) throw new Error('Failed to fetch FG distribution');
         if (!channelRes.ok) throw new Error('Failed to fetch channel sales');
@@ -132,6 +145,7 @@ export default function EntityDashboardPage() {
         setTopProducts(await productsRes.json());
         setIndustryBreakdown(await industryRes.json());
       } else {
+        // USA, HQ, Vietnam, Korot, BWA: No FG distribution
         const [channelRes, productsRes, industryRes] = restRes;
         if (!channelRes.ok) throw new Error('Failed to fetch channel sales');
         if (!productsRes.ok) throw new Error('Failed to fetch top products');
@@ -222,14 +236,14 @@ export default function EntityDashboardPage() {
           <KPICards data={kpiData} loading={loading} entity={entity} />
 
           {/* Time Trend Section */}
-          {/* Japan and China use the same layout as Healthcare (with FG Distribution) */}
-          {entity === 'Korot' || entity === 'BWA' || entity === 'USA' || entity === 'Vietnam' || entity === 'HQ' ? (
+          {/* Only Japan, China, and Healthcare show FG Distribution */}
+          {entity === 'Korot' || entity === 'BWA' || entity === 'Vietnam' || entity === 'HQ' || entity === 'USA' ? (
             <>
-              {/* Monthly Trend - Full Width for Korot and BWA */}
+              {/* Monthly Trend - Full Width for USA, HQ, Vietnam, Korot, BWA */}
               <div className="grid gap-6 md:grid-cols-1">
                 <MonthlyTrendChart data={monthlyTrend} loading={loading} entity={entity} currentYear={parseInt(year)} />
               </div>
-              {/* Quarterly Comparison and Country Sales */}
+              {/* Quarterly Comparison and Channel Sales */}
               <div className="grid gap-6 md:grid-cols-2">
                 <QuarterlyComparisonChart
                   data={quarterlyComparison}
@@ -242,6 +256,7 @@ export default function EntityDashboardPage() {
             </>
           ) : (
             <>
+              {/* Japan, China, Healthcare: Show FG Distribution */}
               <div className="grid gap-6 md:grid-cols-2">
                 <MonthlyTrendChart data={monthlyTrend} loading={loading} entity={entity} currentYear={parseInt(year)} />
                 <QuarterlyComparisonChart
@@ -252,7 +267,7 @@ export default function EntityDashboardPage() {
                 />
               </div>
 
-              {/* FG Distribution and Country Sales Section */}
+              {/* FG Distribution and Channel Sales Section */}
               <div className="grid gap-6 md:grid-cols-2">
                 <FGDistributionChart data={fgDistribution} loading={loading} />
                 <ChannelSalesChart data={channelSales} loading={loading} entity={entity} />

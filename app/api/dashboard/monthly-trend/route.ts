@@ -23,7 +23,8 @@ export async function GET(request: NextRequest) {
 
     // 현재 연도 데이터 가져오기
     const fetchYearData = async (year: number) => {
-      const PAGE_SIZE = 5000; // 페이지 크기 증가로 속도 개선
+      // Supabase PostgREST의 기본 max-rows 제한이 1000이므로 PAGE_SIZE를 1000으로 설정
+    const PAGE_SIZE = 1000; // 페이지 크기 증가로 속도 개선
       let allData: any[] = [];
       let page = 0;
       let hasMore = true;
