@@ -126,11 +126,20 @@ export default function EntityDashboardPage() {
 
       if (!kpiRes.ok) throw new Error('Failed to fetch KPI data');
       if (!monthlyRes.ok) throw new Error('Failed to fetch monthly trend');
-      if (!quarterlyRes.ok) throw new Error('Failed to fetch quarterly comparison');
+      // Quarterly comparison은 타임아웃 시 빈 배열로 처리 (대량 데이터 처리 중)
+      if (!quarterlyRes.ok) {
+        console.warn('⚠️ Quarterly comparison failed, using empty data');
+      }
       
       setKpiData(await kpiRes.json());
       setMonthlyTrend(await monthlyRes.json());
-      setQuarterlyComparison(await quarterlyRes.json());
+      // Quarterly comparison은 에러 시 빈 배열 사용
+      try {
+        setQuarterlyComparison(quarterlyRes.ok ? await quarterlyRes.json() : []);
+      } catch (e) {
+        console.warn('Failed to parse quarterly comparison:', e);
+        setQuarterlyComparison([]);
+      }
 
       // Handle FG distribution only for Japan, China, and Healthcare
       if (entitiesWithFG.includes(entityParam)) {

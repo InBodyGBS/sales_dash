@@ -150,6 +150,8 @@ export async function GET(request: NextRequest) {
     let totalQty = 0;
     let nullCount = 0;
     let zeroCount = 0;
+    let wrongEntityCount = 0;
+    let wrongYearCount = 0;
     
     for (const row of data) {
       // line_amount_mst 처리
