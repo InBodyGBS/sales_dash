@@ -29,13 +29,60 @@ export async function GET(request: NextRequest) {
           hint: error.hint,
         });
         
-        // If RPC function doesn't exist, return empty array with warning
-        if (error.code === '42883' || error.message?.includes('function') || error.message?.includes('does not exist')) {
-          console.warn('⚠️ RPC function get_distinct_years does not exist. Please run database/create-get-distinct-years-function.sql');
-          return NextResponse.json({ 
-            years: [],
-            warning: 'Database function not found. Please contact administrator.'
-          });
+        // If RPC function doesn't exist or timeout, use fallback method
+        if (error.code === '42883' || error.code === '57014' || error.message?.includes('function') || error.message?.includes('does not exist') || error.message?.includes('timeout')) {
+          console.warn('⚠️ RPC failed (function not found or timeout). Using fallback method with limit...');
+          
+          // Fallback: Use simple select with limit
+          let fallbackQuery = supabase
+            .from('sales_data')
+            .select('year')
+            .not('year', 'is', null)
+            .order('year', { ascending: false })
+            .limit(50000); // 더 많은 행을 가져와서 모든 연도 확인
+          
+          if (entity && entity !== 'All') {
+            fallbackQuery = fallbackQuery.eq('entity', entity);
+          }
+          
+          const { data: fallbackData, error: fallbackError } = await fallbackQuery;
+          
+          if (fallbackError) {
+            console.error('❌ Fallback query also failed:', fallbackError);
+            // If it's a "table not found" error, return empty array
+            if (fallbackError.code === '42P01' || fallbackError.code === 'PGRST116' || fallbackError.code === 'PGRST205') {
+              console.warn('Table does not exist, returning empty years array');
+              return NextResponse.json({ years: [] });
+            }
+            return NextResponse.json(
+              { 
+                error: 'Failed to fetch years', 
+                details: fallbackError.message,
+                code: fallbackError.code,
+              },
+              { status: 500 }
+            );
+          }
+          
+          // Extract unique years from fallback data
+          const fallbackYears: number[] = [];
+          if (fallbackData && Array.isArray(fallbackData)) {
+            console.log(`   Fallback: Found ${fallbackData.length} rows`);
+            const seenYears = new Set<number>();
+            fallbackData.forEach((row: any) => {
+              const year = row?.year;
+              if (year != null && !isNaN(Number(year))) {
+                const yearNum = Number(year);
+                if (yearNum > 1900 && yearNum < 2100) {
+                  seenYears.add(yearNum);
+                }
+              }
+            });
+            fallbackYears.push(...Array.from(seenYears).sort((a, b) => b - a));
+          }
+          
+          console.log(`✅ Fallback: Fetched ${fallbackYears.length} unique years for entity: ${entity || 'All'}:`, fallbackYears);
+          return NextResponse.json({ years: fallbackYears });
         }
         
         // If it's a "table not found" error, return empty array
