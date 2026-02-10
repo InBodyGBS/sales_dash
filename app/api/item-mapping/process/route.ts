@@ -485,17 +485,17 @@ export async function POST(request: NextRequest) {
 
             // Only update if there's data to update
             if (Object.keys(updateData).length > 0) {
-              const { count, error: updateError } = await supabase
+              const { data, error: updateError } = await supabase
                 .from('sales_data')
                 .update(updateData)
                 .eq('entity', entity)
                 .eq('item_number', itemNumber)
-                .select('id', { count: 'exact' });
+                .select('id');
 
               if (updateError) {
                 console.warn(`   ⚠️ Error updating sales_data for item_number ${itemNumber}:`, updateError);
               } else {
-                updatedSalesDataCount += count || 0;
+                updatedSalesDataCount += data?.length || 0;
               }
             }
           }

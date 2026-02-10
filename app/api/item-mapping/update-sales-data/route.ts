@@ -36,20 +36,22 @@ export async function POST(request: NextRequest) {
     let allItemMasters: any[] = [];
     let masterPage = 0;
     let hasMoreMasters = true;
+    let masterPageError: any = null;
     
     while (hasMoreMasters) {
       const from = masterPage * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
       
-      const { data: masterPageData, error: masterPageError } = await supabase
+      const { data: masterPageData, error: error } = await supabase
         .from('item_master')
         .select('item_number, fg_classification, category, model, product')
         .eq('is_active', true)
         .order('item_number', { ascending: true })
         .range(from, to);
       
-      if (masterPageError) {
-        console.error('❌ Error loading item_master page:', masterPageError);
+      if (error) {
+        masterPageError = error;
+        console.error('❌ Error loading item_master page:', error);
         break;
       }
       
@@ -113,7 +115,7 @@ export async function POST(request: NextRequest) {
       console.log(`   ✅ Loaded ${allItemMappings.length} item_mapping records (${mappingPage} pages)`);
     }
     
-    const masterResult = { data: allItemMasters, error: null };
+    const masterResult = { data: allItemMasters, error: masterPageError };
     const mappingResult = { data: allItemMappings, error: itemMappingPageError };
 
     const { data: itemMasters, error: itemMasterError } = masterResult;
