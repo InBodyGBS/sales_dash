@@ -16,6 +16,7 @@ import { Entity } from '@/lib/types/sales';
 import { useDropzone } from 'react-dropzone';
 import { Upload, Download, Trash2, Edit2, Save, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { createClient } from '@/lib/supabase/client';
 
 interface ItemMapping {
   id?: string;
@@ -38,6 +39,8 @@ export default function ItemMappingPage() {
   const [uploading, setUploading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<ItemMapping>>({});
+  const [deletingAll, setDeletingAll] = useState(false);
+  const [updatingSalesData, setUpdatingSalesData] = useState(false);
 
   const fetchMappings = useCallback(async () => {
     try {
@@ -88,30 +91,152 @@ export default function ItemMappingPage() {
 
     setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
+      const supabase = createClient();
       
-      const endpoint = useMaster ? '/api/item-master/upload' : '/api/item-mapping/upload';
-      if (!useMaster) {
-        formData.append('entity', entity);
+      // 1. Supabase Storage에 파일 업로드
+      const timestamp = new Date().getTime();
+      const folder = useMaster ? 'item-master' : 'item-mapping';
+      
+      // 파일명을 URL-safe하게 인코딩 (특수 문자 처리)
+      // Supabase Storage는 파일 경로에 특수 문자를 허용하지 않으므로 인코딩 필요
+      const fileExtension = file.name.substring(file.name.lastIndexOf('.'));
+      const fileNameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.'));
+      
+      // 한자, 일본어 등 특수 문자를 base64로 인코딩 (더 안전함)
+      // 또는 간단하게 타임스탬프만 사용
+      const safeFileName = `${timestamp}${fileExtension}`;
+      const storagePath = `${folder}/${safeFileName}`;
+
+      toast.loading('파일 업로드 중...', { id: 'upload' });
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('sales-files')
+        .upload(storagePath, file, {
+          contentType: file.type,
+          upsert: false,
+        });
+
+      if (uploadError) {
+        // Check if bucket doesn't exist
+        if (uploadError.message?.includes('Bucket not found') || uploadError.message?.includes('does not exist')) {
+          throw new Error(
+            `Storage 버킷 'sales-files'가 존재하지 않습니다.\n\n` +
+            `Supabase Dashboard에서 Storage 버킷을 생성해주세요:\n` +
+            `1. Supabase Dashboard → Storage 메뉴\n` +
+            `2. "New bucket" 클릭\n` +
+            `3. Name: sales-files, Public: No, File size limit: 100MB\n` +
+            `4. Policies 설정 (SUPABASE_STORAGE_SETUP.md 참고)`
+          );
+        }
+        throw new Error(`파일 업로드 실패: ${uploadError.message}`);
       }
 
+      toast.loading('파일 처리 중...', { id: 'upload' });
+
+      // 2. 처리 API 호출
+      const endpoint = useMaster ? '/api/item-master/process' : '/api/item-mapping/process';
       const response = await fetch(endpoint, {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          storagePath: uploadData.path,
+          fileName: file.name,
+          entity: useMaster ? null : entity,
+        }),
       });
+
+      if (!response.ok) {
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        let errorDetails = '';
+        let errorData: any = null;
+        
+        try {
+          errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+          
+          // Handle details - could be string or object
+          if (errorData.details) {
+            if (typeof errorData.details === 'string') {
+              errorDetails = errorData.details;
+            } else if (typeof errorData.details === 'object') {
+              errorDetails = JSON.stringify(errorData.details, null, 2);
+            } else {
+              errorDetails = String(errorData.details);
+            }
+          }
+        } catch (e) {
+          // If response is not JSON, use status text
+          const text = await response.text();
+          if (text) {
+            errorMessage = text.substring(0, 200); // Limit error message length
+          }
+        }
+        
+        // Ensure errorDetails is always a string
+        let detailsString = '';
+        if (errorDetails) {
+          if (typeof errorDetails === 'string') {
+            detailsString = errorDetails;
+          } else {
+            detailsString = JSON.stringify(errorDetails, null, 2);
+          }
+        }
+        
+        // Also check errorData.details directly if errorDetails is empty
+        if (!detailsString && errorData?.details) {
+          if (typeof errorData.details === 'string') {
+            detailsString = errorData.details;
+          } else {
+            detailsString = JSON.stringify(errorData.details, null, 2);
+          }
+        }
+        
+        const fullError = detailsString ? `${errorMessage}\n\nDetails: ${detailsString}` : errorMessage;
+        console.error('API Error:', { 
+          status: response.status, 
+          message: errorMessage, 
+          details: detailsString,
+          rawDetails: errorDetails,
+          fullErrorData: errorData 
+        });
+        throw new Error(fullError);
+      }
 
       const data = await response.json();
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to upload item mapping file');
+      // Show success message with skipped items info
+      let successMessage = `성공적으로 ${data.count || 0}개의 Item Mapping을 업로드했습니다`;
+      if (data.skipped) {
+        const skippedParts: string[] = [];
+        if (data.skipped.fileDuplicates > 0) {
+          skippedParts.push(`파일 내 중복 ${data.skipped.fileDuplicates}개`);
+        }
+        if (data.skipped.masterConflicts > 0) {
+          skippedParts.push(`item_master 충돌 ${data.skipped.masterConflicts}개`);
+        }
+        if (skippedParts.length > 0) {
+          successMessage += ` (${skippedParts.join(', ')} 건너뜀)`;
+        }
       }
-
-      toast.success(`성공적으로 ${data.count}개의 Item Mapping을 업로드했습니다`);
+      
+      toast.success(successMessage, { id: 'upload', duration: 5000 });
+      
+      // Log skipped items details for debugging (only in development)
+      if (process.env.NODE_ENV === 'development' && data.skipped && (data.skipped.fileDuplicates > 0 || data.skipped.masterConflicts > 0)) {
+        console.log('Skipped items:', {
+          fileDuplicates: data.skipped.fileDuplicates,
+          masterConflicts: data.skipped.masterConflicts,
+          fileDuplicateDetails: data.skipped.fileDuplicateDetails,
+          masterConflictItems: data.skipped.masterConflictItems,
+        });
+      }
+      
       fetchMappings();
     } catch (error) {
       console.error('Failed to upload item mapping:', error);
-      toast.error((error as Error).message || 'Item Mapping 파일 업로드에 실패했습니다');
+      toast.error((error as Error).message || 'Item Mapping 파일 업로드에 실패했습니다', { id: 'upload' });
     } finally {
       setUploading(false);
     }
@@ -232,6 +357,135 @@ export default function ItemMappingPage() {
     } catch (error) {
       console.error('Failed to delete item mapping:', error);
       toast.error('Item Mapping 삭제에 실패했습니다');
+    }
+  };
+
+  const handleUpdateSalesData = async () => {
+    const targetName = useMaster 
+      ? 'Master Item Mapping (모든 엔티티)' 
+      : `${entity} 엔티티의 Item Mapping`;
+    
+    if (!useMaster && !ENTITIES_REQUIRING_MAPPING.includes(entity)) {
+      toast.error('이 엔티티는 Item Mapping을 사용하지 않습니다');
+      return;
+    }
+
+    setUpdatingSalesData(true);
+    try {
+      const response = await fetch('/api/item-mapping/update-sales-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          entity: useMaster ? null : entity,
+          useMaster: useMaster 
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.details || 'Failed to update sales_data');
+      }
+
+      const data = await response.json();
+      toast.success(`${targetName}이(가) sales_data에 반영되었습니다 (${data.updatedCount}개 레코드 업데이트)`);
+    } catch (error) {
+      console.error('Failed to update sales_data:', error);
+      toast.error((error as Error).message || 'Sales Data 업데이트에 실패했습니다');
+    } finally {
+      setUpdatingSalesData(false);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    const targetName = useMaster 
+      ? '모든 Master Item Mapping' 
+      : `${entity} 엔티티의 모든 Item Mapping`;
+
+    setDeletingAll(true);
+    try {
+      // First, get the actual total count from the database using count query
+      let totalCount = 0;
+      if (useMaster) {
+        // Use a count query to get the actual total (not limited by pagination)
+        const supabase = createClient();
+        const { count, error: countError } = await supabase
+          .from('item_master')
+          .select('*', { count: 'exact', head: true })
+          .eq('is_active', true);
+        
+        if (!countError && count !== null) {
+          totalCount = count;
+        } else {
+          // Fallback: try to get from API (may be limited)
+          const countResponse = await fetch('/api/item-master');
+          if (countResponse.ok) {
+            const countData = await countResponse.json();
+            totalCount = countData.mappings?.length || 0;
+          }
+        }
+      } else {
+        // Use a count query to get the actual total (not limited by pagination)
+        const supabase = createClient();
+        const { count, error: countError } = await supabase
+          .from('item_mapping')
+          .select('*', { count: 'exact', head: true })
+          .eq('entity', entity)
+          .eq('is_active', true);
+        
+        if (!countError && count !== null) {
+          totalCount = count;
+        } else {
+          // Fallback: try to get from API (may be limited)
+          const countResponse = await fetch(`/api/item-mapping?entity=${entity}`);
+          if (countResponse.ok) {
+            const countData = await countResponse.json();
+            totalCount = countData.mappings?.length || 0;
+          }
+        }
+      }
+
+      // Show confirmation with actual total count
+      if (!confirm(`정말 ${targetName} (전체 ${totalCount}개)을 모두 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`)) {
+        setDeletingAll(false);
+        return;
+      }
+
+      if (useMaster) {
+        // Delete all from item_master
+        const response = await fetch('/api/item-master?all=true', {
+          method: 'DELETE',
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || errorData.details || 'Failed to delete all item master mappings');
+        }
+
+        const data = await response.json();
+        toast.success(`${targetName} (${data.count || totalCount}개)이 모두 삭제되었습니다`);
+      } else {
+        // Delete all from item_mapping for this entity
+        const response = await fetch(`/api/item-mapping?entity=${entity}`, {
+          method: 'DELETE',
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || errorData.details || 'Failed to delete all item mappings');
+        }
+
+        const data = await response.json();
+        toast.success(`${targetName} (${data.count || totalCount}개)이 모두 삭제되었습니다`);
+      }
+
+      fetchMappings();
+    } catch (error) {
+      console.error('Failed to delete all item mappings:', error);
+      toast.error((error as Error).message || '전체 삭제에 실패했습니다');
+    } finally {
+      setDeletingAll(false);
     }
   };
 
@@ -358,12 +612,34 @@ export default function ItemMappingPage() {
                   {useMaster ? 'Master Item Mapping 데이터 (모든 Entity 공통)' : `${entity} 엔티티의 Item Mapping 데이터`}
                 </CardDescription>
               </div>
-              {mappings.length > 0 && (
-                <Button variant="outline" size="sm" onClick={handleExport}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Export CSV
-                </Button>
-              )}
+              <div className="flex items-center gap-2">
+                {mappings.length > 0 && (
+                  <>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={handleUpdateSalesData}
+                      disabled={updatingSalesData || loading}
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      {updatingSalesData ? '업데이트 중...' : 'Sales Data 업데이트'}
+                    </Button>
+                    <Button 
+                      variant="destructive" 
+                      size="sm" 
+                      onClick={handleDeleteAll}
+                      disabled={deletingAll || loading}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      {deletingAll ? '삭제 중...' : '전체 삭제'}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleExport}>
+                      <Download className="h-4 w-4 mr-2" />
+                      Export CSV
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
           </CardHeader>
           <CardContent>

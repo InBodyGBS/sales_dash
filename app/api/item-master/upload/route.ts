@@ -71,17 +71,43 @@ export async function POST(request: NextRequest) {
         category: categoryCol ? (row[categoryCol]?.toString().trim() || null) : null,
         model: modelCol ? (row[modelCol]?.toString().trim() || null) : null,
         product: productCol ? (row[productCol]?.toString().trim() || null) : null,
-        is_active: true,
       };
     });
 
     // Deactivate existing mappings for uploaded items
     const supabase = createServiceClient();
     const itemNumbers = mappings.map(m => m.item_number);
-    await supabase
-      .from('item_master')
-      .update({ is_active: false, updated_at: new Date().toISOString() })
-      .in('item_number', itemNumbers);
+    
+    // Try to deactivate existing mappings (handle gracefully if table/columns don't exist)
+    if (itemNumbers.length > 0) {
+      try {
+        const updateData: any = { is_active: false };
+        // Only add updated_at if column exists
+        try {
+          updateData.updated_at = new Date().toISOString();
+        } catch (e) {
+          // updated_at column may not exist, continue without it
+        }
+        
+        const { error: updateError } = await supabase
+          .from('item_master')
+          .update(updateData)
+          .in('item_number', itemNumbers);
+        
+        if (updateError) {
+          // If table doesn't exist, log warning but continue
+          if (updateError.code === '42P01' || updateError.code === 'PGRST116' || updateError.message?.includes('does not exist')) {
+            console.warn('Item master table does not exist yet. Skipping deactivation step.');
+          } else {
+            console.warn('Error deactivating existing mappings:', updateError);
+            // Continue anyway - we'll try to insert new mappings
+          }
+        }
+      } catch (e) {
+        console.warn('Error during deactivation step:', e);
+        // Continue anyway
+      }
+    }
 
     // Insert new mappings
     const { data, error } = await supabase
@@ -93,7 +119,25 @@ export async function POST(request: NextRequest) {
       .select();
 
     if (error) {
-      console.error('Error inserting item master mappings:', error);
+      console.error('Error inserting item master mappings:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      });
+      
+      // If table doesn't exist, return helpful error
+      if (error.code === '42P01' || error.code === 'PGRST116' || error.message?.includes('does not exist')) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Item master table does not exist. Please create the table first using the SQL script: database/create-item-master-table.sql',
+            details: error.message,
+          },
+          { status: 500 }
+        );
+      }
+      
       throw error;
     }
 

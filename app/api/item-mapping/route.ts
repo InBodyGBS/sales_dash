@@ -138,10 +138,19 @@ export async function DELETE(request: NextRequest) {
 
     const supabase = createServiceClient();
 
+    // First, get the count of active items
+    const { count, error: countError } = await supabase
+      .from('item_mapping')
+      .select('*', { count: 'exact', head: true })
+      .eq('entity', entity)
+      .eq('is_active', true);
+
+    // Delete all active items for this entity
     const { error } = await supabase
       .from('item_mapping')
       .update({ is_active: false, updated_at: new Date().toISOString() })
-      .eq('entity', entity);
+      .eq('entity', entity)
+      .eq('is_active', true);
 
     if (error) {
       throw error;
@@ -150,6 +159,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: `Successfully deactivated all item mappings for ${entity}`,
+      count: count || 0,
     });
   } catch (error) {
     console.error('Error deleting item mappings:', error);
