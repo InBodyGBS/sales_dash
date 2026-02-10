@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = await createServiceClient();
+    const supabase = createServiceClient();
 
     // Build query
     let query = supabase

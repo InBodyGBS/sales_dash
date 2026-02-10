@@ -14,13 +14,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = await createServiceClient();
+    const supabase = createServiceClient();
     const yearInt = parseInt(year);
     const prevYear = yearInt - 1;
+    
+    // 디버깅: 받은 year 파라미터 확인
+    console.log(`📊 Monthly Trend API - Received year parameter: "${year}", parsed as: ${yearInt}, entities: ${entities.join(',')}`);
 
     // 현재 연도 데이터 가져오기
     const fetchYearData = async (year: number) => {
-      const PAGE_SIZE = 1000;
+      const PAGE_SIZE = 5000; // 페이지 크기 증가로 속도 개선
       let allData: any[] = [];
       let page = 0;
       let hasMore = true;
@@ -53,9 +56,10 @@ export async function GET(request: NextRequest) {
         const to = from + PAGE_SIZE - 1;
         
         // 정렬을 추가하여 일관된 결과 보장
+        // entity, year, invoice_date를 모두 가져와서 정확한 집계
         let query = supabase
           .from('sales_data')
-          .select('invoice_date, line_amount_mst, quantity', { count: 'exact', head: false })
+          .select('entity, year, invoice_date, line_amount_mst, quantity', { count: 'exact', head: false })
           .eq('year', year)
           .not('invoice_date', 'is', null)
           .order('id', { ascending: true }); // 정렬 추가
@@ -77,20 +81,21 @@ export async function GET(request: NextRequest) {
           allData = allData.concat(data);
           page++;
           
-          // 가져온 데이터가 전체 개수에 도달했는지 확인
+          // 더 가져올 데이터가 있는지 확인 (data.length가 PAGE_SIZE와 같으면 더 있음)
+          hasMore = data.length === PAGE_SIZE;
+          
+          // 가져온 데이터가 전체 개수에 도달했는지 확인 (추가 안전장치)
           if (allData.length >= totalCount) {
             hasMore = false;
             console.log(`✅ Monthly Trend - All data fetched for year ${year}: ${allData.length} records (expected: ${totalCount})`);
-          } else {
-            hasMore = data.length === PAGE_SIZE;
           }
         } else {
           hasMore = false;
         }
         
-        // 안전장치: 무한 루프 방지 (최대 1000페이지)
-        if (page > 1000) {
-          console.warn(`⚠️ Monthly Trend - Maximum page limit reached for year ${year} (1000 pages). Fetched ${allData.length} records out of ${totalCount}`);
+        // 안전장치: 무한 루프 방지 (최대 10000페이지 = 10,000,000 레코드)
+        if (page > 10000) {
+          console.warn(`⚠️ Monthly Trend - Maximum page limit reached for year ${year} (10000 pages). Fetched ${allData.length} records out of ${totalCount}`);
           hasMore = false;
         }
       }

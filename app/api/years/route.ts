@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     
     // Use pagination to get all years (Supabase returns max 1000 rows per query)
     const PAGE_SIZE = 1000;
-    const MAX_PAGES = 5; // 최대 5,000행까지 확인 (연도는 보통 많지 않음)
+    const MAX_PAGES = 100; // 최대 100,000행까지 확인 (모든 연도를 찾기 위해)
     const seenYears = new Set<number>();
     let page = 0;
     let hasMore = true;
@@ -37,10 +37,10 @@ export async function GET(request: NextRequest) {
             query = query.eq('entity', entity);
           }
 
-          // 정렬: invoice_date 기준으로 정렬 (year가 null이어도 invoice_date에서 추출 가능)
-          // invoice_date가 null이 아닌 것을 우선
-          query = query.order('invoice_date', { ascending: false, nullsFirst: false })
-                       .order('year', { ascending: false, nullsFirst: false })
+          // 정렬: year 기준으로 정렬 (모든 연도를 찾기 위해)
+          // year가 null이 아닌 것을 우선, 그 다음 invoice_date
+          query = query.order('year', { ascending: false, nullsFirst: false })
+                       .order('invoice_date', { ascending: false, nullsFirst: false })
                        .range(from, to);
 
           const { data, error } = await query;
@@ -67,16 +67,16 @@ export async function GET(request: NextRequest) {
           if (data && data.length > 0) {
             // Extract unique years from this page
             data.forEach((row: any) => {
-              // First try year column (sales_data.year)
+              // First try year column (sales_data.year) - 이것이 가장 정확함
               let year = row?.year;
-              if (year != null && year !== undefined && !isNaN(Number(year))) {
+              if (year != null && year !== undefined) {
                 const yearNum = Number(year);
-                if (yearNum > 1900 && yearNum < 2100) {
+                if (!isNaN(yearNum) && yearNum > 1900 && yearNum < 2100) {
                   seenYears.add(yearNum);
                 }
               }
               
-              // Also extract year from invoice_date (in case year column is null or different)
+              // Also extract year from invoice_date (year column이 null이거나 없을 경우를 대비)
               const invoiceDate = row?.invoice_date;
               if (invoiceDate) {
                 try {
@@ -92,6 +92,8 @@ export async function GET(request: NextRequest) {
                 }
               }
             });
+            
+            console.log(`   Page ${page + 1}: Found ${data.length} rows, ${seenYears.size} unique years so far:`, Array.from(seenYears).sort((a, b) => b - a));
             
             console.log(`   Page ${page + 1}: Found ${data.length} rows, ${seenYears.size} unique years so far`);
             

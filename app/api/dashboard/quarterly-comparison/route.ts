@@ -14,12 +14,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = await createServiceClient();
+    const supabase = createServiceClient();
     const currentYear = parseInt(year);
     const previousYear = currentYear - 1;
+    
+    // 디버깅: 받은 year 파라미터 확인
+    console.log(`📊 Quarterly Comparison API - Received year parameter: "${year}", parsed as: ${currentYear}, entities: ${entities.join(',')}`);
 
     // 모든 데이터를 가져오기 위해 페이지네이션 처리
-    const PAGE_SIZE = 1000;
+    const PAGE_SIZE = 5000; // 페이지 크기 증가로 속도 개선
     
     // Get current year data - 모든 페이지 가져오기
     let allCurrentData: any[] = [];
@@ -79,20 +82,21 @@ export async function GET(request: NextRequest) {
           allCurrentData = allCurrentData.concat(data);
           currentPage++;
           
-          // 가져온 데이터가 전체 개수에 도달했는지 확인
+          // 더 가져올 데이터가 있는지 확인 (data.length가 PAGE_SIZE와 같으면 더 있음)
+          currentHasMore = data.length === PAGE_SIZE;
+          
+          // 가져온 데이터가 전체 개수에 도달했는지 확인 (추가 안전장치)
           if (allCurrentData.length >= currentTotalCount) {
             currentHasMore = false;
             console.log(`✅ Quarterly Comparison - All current year data fetched: ${allCurrentData.length} records (expected: ${currentTotalCount})`);
-          } else {
-            currentHasMore = data.length === PAGE_SIZE;
           }
         } else {
           currentHasMore = false;
         }
         
-        // 안전장치: 무한 루프 방지
-        if (currentPage > 1000) {
-          console.warn(`⚠️ Quarterly Comparison - Maximum page limit reached for current year (1000 pages). Fetched ${allCurrentData.length} records out of ${currentTotalCount}`);
+        // 안전장치: 무한 루프 방지 (최대 10000페이지 = 10,000,000 레코드)
+        if (currentPage > 10000) {
+          console.warn(`⚠️ Quarterly Comparison - Maximum page limit reached for current year (10000 pages). Fetched ${allCurrentData.length} records out of ${currentTotalCount}`);
           currentHasMore = false;
         }
       }
@@ -171,20 +175,21 @@ export async function GET(request: NextRequest) {
           allPrevData = allPrevData.concat(data);
           prevPage++;
           
-          // 가져온 데이터가 전체 개수에 도달했는지 확인
+          // 더 가져올 데이터가 있는지 확인 (data.length가 PAGE_SIZE와 같으면 더 있음)
+          prevHasMore = data.length === PAGE_SIZE;
+          
+          // 가져온 데이터가 전체 개수에 도달했는지 확인 (추가 안전장치)
           if (allPrevData.length >= prevTotalCount) {
             prevHasMore = false;
             console.log(`✅ Quarterly Comparison - All previous year data fetched: ${allPrevData.length} records (expected: ${prevTotalCount})`);
-          } else {
-            prevHasMore = data.length === PAGE_SIZE;
           }
         } else {
           prevHasMore = false;
         }
         
-        // 안전장치: 무한 루프 방지
-        if (prevPage > 1000) {
-          console.warn(`⚠️ Quarterly Comparison - Maximum page limit reached for previous year (1000 pages). Fetched ${allPrevData.length} records out of ${prevTotalCount}`);
+        // 안전장치: 무한 루프 방지 (최대 10000페이지 = 10,000,000 레코드)
+        if (prevPage > 10000) {
+          console.warn(`⚠️ Quarterly Comparison - Maximum page limit reached for previous year (10000 pages). Fetched ${allPrevData.length} records out of ${prevTotalCount}`);
           prevHasMore = false;
         }
       }

@@ -14,14 +14,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = await createServiceClient();
+    const supabase = createServiceClient();
     const yearInt = parseInt(year);
+    
+    // 디버깅: 받은 year 파라미터 확인
+    console.log(`📊 Summary API - Received year parameter: "${year}", parsed as: ${yearInt}, entities: ${entities.join(',')}`);
 
     // Total Amount = 연도별 Line Amount_MST의 합계
     // 모든 페이지를 반복해서 가져와서 전체 합계 계산
     
     // 모든 데이터를 가져오기 위해 페이지네이션 처리
-    const PAGE_SIZE = 1000;
+    const PAGE_SIZE = 5000; // 페이지 크기 증가로 속도 개선
     let allData: any[] = [];
     let page = 0;
     let hasMore = true;
@@ -55,9 +58,10 @@ export async function GET(request: NextRequest) {
         
         // 각 페이지마다 새로운 쿼리 생성
         // 정렬을 추가하여 일관된 결과 보장 (id로 정렬)
+        // entity, year를 포함하여 정확한 집계 확인
         let query = supabase
           .from('sales_data')
-          .select('line_amount_mst, quantity', { count: 'exact', head: false })
+          .select('entity, year, line_amount_mst, quantity', { count: 'exact', head: false })
           .eq('year', yearInt)
           .order('id', { ascending: true }); // 정렬 추가로 일관된 결과 보장
 
@@ -80,27 +84,31 @@ export async function GET(request: NextRequest) {
           allData = allData.concat(data);
           page++;
           
-          // 가져온 데이터가 전체 개수에 도달했는지 확인
+          // 더 가져올 데이터가 있는지 확인 (data.length가 PAGE_SIZE와 같으면 더 있음)
+          hasMore = data.length === PAGE_SIZE;
+          
+          // 가져온 데이터가 전체 개수에 도달했는지 확인 (추가 안전장치)
           if (allData.length >= totalCount) {
             hasMore = false;
             console.log(`✅ All data fetched: ${allData.length} records (expected: ${totalCount})`);
-          } else {
-            hasMore = data.length === PAGE_SIZE; // 더 가져올 데이터가 있는지 확인
           }
         } else {
           hasMore = false;
         }
         
-        // 안전장치: 무한 루프 방지 (최대 1000페이지)
-        if (page > 1000) {
-          console.warn(`⚠️ Maximum page limit reached (1000 pages). Fetched ${allData.length} records out of ${totalCount}`);
+        // 안전장치: 무한 루프 방지 (최대 10000페이지 = 10,000,000 레코드)
+        if (page > 10000) {
+          console.warn(`⚠️ Maximum page limit reached (10000 pages). Fetched ${allData.length} records out of ${totalCount}`);
           hasMore = false;
         }
       }
       
       // 최종 확인: 가져온 데이터 수와 전체 개수 비교
+      console.log(`📊 Final count: Fetched ${allData.length} records, expected ${totalCount}, difference: ${totalCount - allData.length}`);
       if (allData.length < totalCount) {
         console.warn(`⚠️ Warning: Fetched ${allData.length} records but expected ${totalCount}. Missing ${totalCount - allData.length} records.`);
+      } else if (allData.length > totalCount) {
+        console.warn(`⚠️ Warning: Fetched ${allData.length} records but expected ${totalCount}. Extra ${allData.length - totalCount} records.`);
       }
     } catch (queryError) {
       console.error('Query error:', queryError);
@@ -176,14 +184,15 @@ export async function GET(request: NextRequest) {
       누락된_레코드_수: totalCount - data.length,
       null_line_amount_mst_개수: nullCount,
       zero_line_amount_mst_개수: zeroCount,
+      잘못된_entity_개수: wrongEntityCount,
+      잘못된_year_개수: wrongYearCount,
       계산된_Total_Amount: totalAmount,
       계산된_Total_Amount_원: `${totalAmount.toLocaleString()} 원`,
       계산된_Total_Amount_KRW: `₩${totalAmount.toLocaleString()}`,
-      샘플_데이터_타입: typeof data[0]?.line_amount_mst,
-      샘플_값: data.slice(0, 3).map(r => ({
-        line_amount_mst: r.line_amount_mst,
-        타입: typeof r.line_amount_mst,
-        변환된값: Number(r.line_amount_mst)
+      샘플_데이터: data.slice(0, 5).map(r => ({
+        entity: r.entity,
+        year: r.year,
+        line_amount_mst: r.line_amount_mst
       }))
     });
     
@@ -226,9 +235,15 @@ export async function GET(request: NextRequest) {
         console.error('Previous year count query error:', prevCountError);
         // 이전 연도 데이터는 필수가 아니므로 에러가 나도 계속 진행
         prevTotalCount = 0;
+        prevHasMore = false; // 데이터가 없으면 루프 진입하지 않음
       } else {
         prevTotalCount = prevInitialCount || 0;
         console.log(`📊 Previous year total records: ${prevTotalCount} (year: ${prevYear}, entities: ${entities.join(',')})`);
+        // 데이터가 없으면 루프 진입하지 않음
+        if (prevTotalCount === 0) {
+          prevHasMore = false;
+          console.log(`ℹ️ No previous year data found for year ${prevYear}`);
+        }
       }
 
       while (prevHasMore && prevTotalCount > 0) {
@@ -236,9 +251,10 @@ export async function GET(request: NextRequest) {
         const to = from + PAGE_SIZE - 1;
         
         // 각 페이지마다 새로운 쿼리 생성 (정렬 추가)
+        // entity, year를 포함하여 정확한 집계 확인
         let prevQuery = supabase
           .from('sales_data')
-          .select('line_amount_mst, quantity', { count: 'exact', head: false })
+          .select('entity, year, line_amount_mst, quantity', { count: 'exact', head: false })
           .eq('year', prevYear)
           .order('id', { ascending: true }); // 정렬 추가
 
@@ -260,20 +276,21 @@ export async function GET(request: NextRequest) {
           allPrevData = allPrevData.concat(data);
           prevPage++;
           
-          // 가져온 데이터가 전체 개수에 도달했는지 확인
+          // 더 가져올 데이터가 있는지 확인 (data.length가 PAGE_SIZE와 같으면 더 있음)
+          prevHasMore = data.length === PAGE_SIZE;
+          
+          // 가져온 데이터가 전체 개수에 도달했는지 확인 (추가 안전장치)
           if (allPrevData.length >= prevTotalCount) {
             prevHasMore = false;
             console.log(`✅ All previous year data fetched: ${allPrevData.length} records (expected: ${prevTotalCount})`);
-          } else {
-            prevHasMore = data.length === PAGE_SIZE;
           }
         } else {
           prevHasMore = false;
         }
         
-        // 안전장치: 무한 루프 방지
-        if (prevPage > 1000) {
-          console.warn(`⚠️ Maximum page limit reached for previous year (1000 pages). Fetched ${allPrevData.length} records out of ${prevTotalCount}`);
+        // 안전장치: 무한 루프 방지 (최대 10000페이지 = 10,000,000 레코드)
+        if (prevPage > 10000) {
+          console.warn(`⚠️ Maximum page limit reached for previous year (10000 pages). Fetched ${allPrevData.length} records out of ${prevTotalCount}`);
           prevHasMore = false;
         }
       }
@@ -290,11 +307,26 @@ export async function GET(request: NextRequest) {
     const prevData = allPrevData;
 
     // Calculate previous year totals
+    // entity, year 필터가 정확히 적용되었는지 확인
     let prevTotalAmount = 0;
     let prevTotalQty = 0;
+    let prevWrongEntityCount = 0;
+    let prevWrongYearCount = 0;
     
     if (prevData && Array.isArray(prevData) && prevData.length > 0) {
       for (const row of prevData) {
+        // entity와 year 검증
+        if (entities.length > 0 && !entities.includes('All')) {
+          if (!entities.includes(row.entity)) {
+            prevWrongEntityCount++;
+            console.warn(`⚠️ Previous year - Wrong entity found: ${row.entity} (expected: ${entities.join(', ')})`);
+          }
+        }
+        if (row.year !== prevYear) {
+          prevWrongYearCount++;
+          console.warn(`⚠️ Previous year - Wrong year found: ${row.year} (expected: ${prevYear})`);
+        }
+        
         if (row.line_amount_mst !== null && row.line_amount_mst !== undefined) {
           const amount = Number(row.line_amount_mst);
           if (!isNaN(amount)) {
@@ -309,6 +341,27 @@ export async function GET(request: NextRequest) {
           }
         }
       }
+      
+      // 검증 결과 로그
+      if (prevWrongEntityCount > 0 || prevWrongYearCount > 0) {
+        console.error(`❌ Previous year data validation failed:`, {
+          prevYear,
+          prevWrongEntityCount,
+          prevWrongYearCount,
+          prevTotalRecords: prevData.length
+        });
+      }
+      
+      console.log(`✅ Previous year calculation complete:`, {
+        prevYear,
+        prevTotalAmount,
+        prevTotalRecords: prevData.length
+      });
+    } else {
+      // 이전 연도 데이터가 없으면 0으로 설정
+      console.log(`ℹ️ No previous year data available for year ${prevYear}, setting amounts to 0`);
+      prevTotalAmount = 0;
+      prevTotalQty = 0;
     }
 
     // Calculate percentage change
@@ -317,6 +370,28 @@ export async function GET(request: NextRequest) {
     const amountChange = prevTotalAmount > 0 
       ? ((totalAmount - prevTotalAmount) / prevTotalAmount) * 100 
       : 0;
+    
+    // 디버깅: 현재 연도와 이전 연도 비교
+    if (totalAmount === prevTotalAmount && prevTotalAmount > 0) {
+      console.error(`❌ ERROR: Current year (${yearInt}) and previous year (${prevYear}) amounts are identical!`, {
+        currentYear: yearInt,
+        previousYear: prevYear,
+        currentAmount: totalAmount,
+        previousAmount: prevTotalAmount,
+        currentRecords: data.length,
+        previousRecords: prevData.length
+      });
+    } else {
+      console.log(`📊 Year comparison:`, {
+        currentYear: yearInt,
+        previousYear: prevYear,
+        currentAmount: totalAmount,
+        previousAmount: prevTotalAmount,
+        amountChange: amountChange.toFixed(2) + '%',
+        currentRecords: data.length,
+        previousRecords: prevData.length
+      });
+    }
     const qtyChange = prevTotalQty > 0 
       ? ((totalQty - prevTotalQty) / prevTotalQty) * 100 
       : 0;
