@@ -484,7 +484,7 @@ export async function POST(request: NextRequest) {
               // First, check if there are records to update
               const { count: checkCount, error: checkError } = await supabase
                 .from('sales_data')
-                .select('id', { count: 'exact', head: true })
+                .select('id', { count: 'exact' })
                 .eq('entity', entity)
                 .eq('item_number', itemNumber);
               

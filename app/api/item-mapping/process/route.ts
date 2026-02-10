@@ -490,7 +490,7 @@ export async function POST(request: NextRequest) {
                 .update(updateData)
                 .eq('entity', entity)
                 .eq('item_number', itemNumber)
-                .select('id', { count: 'exact', head: true });
+                .select('id', { count: 'exact' });
 
               if (updateError) {
                 console.warn(`   ⚠️ Error updating sales_data for item_number ${itemNumber}:`, updateError);
