@@ -24,15 +24,38 @@ const ENTITY_DISPLAY_NAMES: Record<Entity, string> = {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [entitiesWithYears, setEntitiesWithYears] = useState<Set<Entity>>(new Set());
+  const [availableEntities, setAvailableEntities] = useState<Entity[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 모든 entity를 항상 표시 (years API 체크 없이)
-    // 데이터가 없으면 entity dashboard 페이지에서 처리
-    setEntitiesWithYears(new Set(ENTITIES));
-    setLoading(false);
+    fetchAvailableEntities();
   }, []);
+
+  const fetchAvailableEntities = async () => {
+    try {
+      // Use optimized API endpoint that checks all entities in a single query
+      // This is much faster than checking each entity individually
+      const res = await fetch('/api/entities/available');
+      const data = await res.json();
+      
+      if (data.entities && Array.isArray(data.entities)) {
+        // Filter to only include entities that are in our ENTITIES list
+        const available = data.entities.filter((e: string) => 
+          ENTITIES.includes(e as Entity)
+        ) as Entity[];
+        setAvailableEntities(available);
+      } else {
+        // Fallback: if API fails, show all entities
+        setAvailableEntities(ENTITIES);
+      }
+    } catch (error) {
+      console.error('Failed to fetch available entities:', error);
+      // Fallback to all entities if API fails
+      setAvailableEntities(ENTITIES);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleEntitySelect = (entity: Entity) => {
     router.push(`/dashboard/${entity}`);
@@ -93,38 +116,67 @@ export default function DashboardPage() {
         {/* Entity Cards Grid */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {ENTITIES.map((entity) => {
-            const hasYears = entitiesWithYears.has(entity);
+            const hasData = availableEntities.includes(entity);
             return (
               <Card
                 key={entity}
-                className="p-6 cursor-pointer transition-all hover:shadow-lg hover:border-primary"
-                onClick={() => handleEntitySelect(entity)}
+                className={`p-6 cursor-pointer transition-all hover:shadow-lg ${
+                  hasData
+                    ? 'hover:border-primary'
+                    : 'opacity-60 cursor-not-allowed'
+                }`}
+                onClick={() => hasData && handleEntitySelect(entity)}
               >
                 <div className="flex flex-col items-center text-center space-y-4">
-                  <div className="p-4 rounded-full bg-primary/10">
-                    <Building2 className="h-8 w-8 text-primary" />
+                  <div
+                    className={`p-4 rounded-full ${
+                      hasData ? 'bg-primary/10' : 'bg-muted'
+                    }`}
+                  >
+                    <Building2
+                      className={`h-8 w-8 ${
+                        hasData ? 'text-primary' : 'text-muted-foreground'
+                      }`}
+                    />
                   </div>
                   <div>
                     <h3 className="text-xl font-semibold mb-1">
                       {ENTITY_DISPLAY_NAMES[entity]}
                     </h3>
+                    {!hasData && (
+                      <p className="text-sm text-muted-foreground">
+                        No data available
+                      </p>
+                    )}
                   </div>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEntitySelect(entity);
-                    }}
-                  >
-                    View Dashboard
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
+                  {hasData && (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEntitySelect(entity);
+                      }}
+                    >
+                      View Dashboard
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </Card>
             );
           })}
         </div>
+
+        {availableEntities.length === 0 && (
+          <div className="mt-12 text-center">
+            <Card className="p-8">
+              <p className="text-muted-foreground">
+                No sales data available. Please upload data first.
+              </p>
+            </Card>
+          </div>
+        )}
       </div>
     </div>
   );
