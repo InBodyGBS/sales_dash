@@ -16,6 +16,15 @@ export async function GET(request: NextRequest) {
 
     const supabase = createServiceClient();
     const currentYear = parseInt(year);
+    
+    if (isNaN(currentYear)) {
+      console.error(`❌ Quarterly Comparison API - Invalid year parameter: "${year}"`);
+      return NextResponse.json(
+        { error: 'Invalid year parameter', details: `Year "${year}" is not a valid number` },
+        { status: 400 }
+      );
+    }
+    
     const previousYear = currentYear - 1;
     
     // 디버깅: 받은 year 파라미터 확인
@@ -32,10 +41,10 @@ export async function GET(request: NextRequest) {
     let currentTotalCount = 0;
 
     try {
-      // 먼저 전체 개수를 확인
+      // Count query 최적화: id만 선택하여 타임아웃 방지
       let currentCountQuery = supabase
         .from('sales_data')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .eq('year', currentYear)
         .not('quarter', 'is', null);
 
@@ -43,17 +52,39 @@ export async function GET(request: NextRequest) {
         currentCountQuery = currentCountQuery.in('entity', entities);
       }
 
-      const { count: currentInitialCount, error: currentCountError } = await currentCountQuery;
+      // 타임아웃 방지를 위해 5초 제한
+      const currentCountPromise = currentCountQuery;
+      const currentTimeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Current year count query timeout')), 5000)
+      );
+
+      const { count: currentInitialCount, error: currentCountError } = await Promise.race([
+        currentCountPromise,
+        currentTimeoutPromise
+      ]).catch((err) => {
+        console.warn('⚠️ Quarterly Comparison API - Current year count query timeout or error, proceeding without count:', err);
+        return { count: null, error: null }; // Count 없이 진행
+      }) as any;
       
       if (currentCountError) {
-        console.error('Current year count query error:', currentCountError);
+        console.error('❌ Quarterly Comparison API - Current year count query error:', {
+          code: currentCountError.code,
+          message: currentCountError.message,
+          details: currentCountError.details,
+          hint: currentCountError.hint,
+          year: currentYear,
+          entities
+        });
         throw new Error(`Failed to get total count for current year: ${currentCountError.message}`);
       }
 
       currentTotalCount = currentInitialCount || 0;
-      console.log(`📊 Quarterly Comparison - Total records to fetch for current year ${currentYear}: ${currentTotalCount} (entities: ${entities.join(',')})`);
+      console.log(`📊 Quarterly Comparison - Total records to fetch for current year ${currentYear}: ${currentTotalCount || 'unknown'} (entities: ${entities.join(',')})`);
 
-      while (currentHasMore) {
+      // Count가 없으면 최대 100페이지로 제한
+      let currentMaxPages = currentTotalCount > 0 ? Math.ceil(currentTotalCount / PAGE_SIZE) : 100;
+
+      while (currentHasMore && currentPage < currentMaxPages) {
         const from = currentPage * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
         
@@ -75,7 +106,15 @@ export async function GET(request: NextRequest) {
         const { data, error } = await currentQuery;
         
         if (error) {
-          console.error('Current year query error (page ' + currentPage + '):', error);
+          console.error('❌ Quarterly Comparison API - Current year query error (page ' + currentPage + '):', {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+            year: currentYear,
+            entities,
+            page: currentPage
+          });
           throw new Error(`Database query failed: ${error.message}`);
         }
 
@@ -123,10 +162,10 @@ export async function GET(request: NextRequest) {
     let prevTotalCount = 0;
 
     try {
-      // 먼저 이전 연도 전체 개수를 확인
+      // 이전 연도 Count query 최적화: id만 선택하여 타임아웃 방지
       let prevCountQuery = supabase
         .from('sales_data')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .eq('year', previousYear)
         .not('quarter', 'is', null);
 
@@ -134,7 +173,19 @@ export async function GET(request: NextRequest) {
         prevCountQuery = prevCountQuery.in('entity', entities);
       }
 
-      const { count: prevInitialCount, error: prevCountError } = await prevCountQuery;
+      // 타임아웃 방지를 위해 5초 제한
+      const prevCountPromise = prevCountQuery;
+      const prevTimeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Previous year count query timeout')), 5000)
+      );
+
+      const { count: prevInitialCount, error: prevCountError } = await Promise.race([
+        prevCountPromise,
+        prevTimeoutPromise
+      ]).catch((err) => {
+        console.warn('⚠️ Quarterly Comparison API - Previous year count query timeout or error, proceeding without count:', err);
+        return { count: null, error: null }; // Count 없이 진행
+      }) as any;
       
       if (prevCountError) {
         console.error('Previous year count query error:', prevCountError);
@@ -145,7 +196,10 @@ export async function GET(request: NextRequest) {
         console.log(`📊 Quarterly Comparison - Total records to fetch for previous year ${previousYear}: ${prevTotalCount} (entities: ${entities.join(',')})`);
       }
 
-      while (prevHasMore && prevTotalCount > 0) {
+      // 이전 연도도 최대 100페이지로 제한
+      let prevMaxPages = prevTotalCount > 0 ? Math.ceil(prevTotalCount / PAGE_SIZE) : 100;
+
+      while (prevHasMore && prevTotalCount > 0 && prevPage < prevMaxPages) {
         const from = prevPage * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
         
@@ -280,7 +334,11 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('Quarterly comparison API error:', error);
+    console.error('❌ Quarterly Comparison API - Unexpected error:', {
+      message: (error as Error).message,
+      stack: (error as Error).stack,
+      name: (error as Error).name
+    });
     return NextResponse.json(
       { error: 'Failed to fetch quarterly comparison', details: (error as Error).message },
       { status: 500 }

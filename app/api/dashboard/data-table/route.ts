@@ -14,6 +14,8 @@ export async function GET(request: NextRequest) {
     const countries = searchParams.get('countries')?.split(',').filter(Boolean) || [];
     const fg = searchParams.get('fg');
 
+    console.log(`📊 Data Table API - Request params:`, { year, page, pageSize, sortBy, sortOrder, entities, quarter, countries, fg });
+
     if (!year) {
       return NextResponse.json(
         { error: 'Year parameter is required' },
@@ -22,13 +24,23 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = createServiceClient();
+    const yearInt = parseInt(year);
+    
+    if (isNaN(yearInt)) {
+      console.error(`❌ Invalid year parameter: "${year}"`);
+      return NextResponse.json(
+        { error: 'Invalid year parameter', details: `Year "${year}" is not a valid number` },
+        { status: 400 }
+      );
+    }
 
     // Build query
     let query = supabase
       .from('sales_data')
       .select('*', { count: 'exact' });
 
-    query = query.eq('year', parseInt(year));
+    query = query.eq('year', yearInt);
+    console.log(`📊 Data Table API - Query built for year: ${yearInt}, entities: ${entities.join(',') || 'All'}`);
 
     if (entities.length > 0 && !entities.includes('All')) {
       query = query.in('entity', entities);
@@ -67,6 +79,18 @@ export async function GET(request: NextRequest) {
     const { data, error, count } = await query;
 
     if (error) {
+      console.error(`❌ Data Table API - Database error:`, {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        year: yearInt,
+        entities,
+        quarter,
+        countries,
+        fg
+      });
+      
       // If fg_classification column doesn't exist, retry without the filter
       if (error.code === '42703' && fg && fg !== 'All') {
         console.warn('fg_classification column not found, retrying without filter');
@@ -157,7 +181,11 @@ export async function GET(request: NextRequest) {
       pageSize,
     });
   } catch (error) {
-    console.error('Data table API error:', error);
+    console.error('❌ Data Table API - Unexpected error:', {
+      message: (error as Error).message,
+      stack: (error as Error).stack,
+      name: (error as Error).name
+    });
     return NextResponse.json(
       { error: 'Failed to fetch data table', details: (error as Error).message },
       { status: 500 }

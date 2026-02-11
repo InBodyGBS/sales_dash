@@ -17,6 +17,16 @@ export async function GET(request: NextRequest) {
 
     const supabase = createServiceClient();
     const yearInt = parseInt(year);
+    
+    console.log(`📊 Channel Sales API - Request params:`, { year, yearInt, limit, entities });
+    
+    if (isNaN(yearInt)) {
+      console.error(`❌ Channel Sales API - Invalid year parameter: "${year}"`);
+      return NextResponse.json(
+        { error: 'Invalid year parameter', details: `Year "${year}" is not a valid number` },
+        { status: 400 }
+      );
+    }
 
     // 모든 데이터를 가져오기 위해 페이지네이션 처리
     const PAGE_SIZE = 1000;
@@ -26,10 +36,11 @@ export async function GET(request: NextRequest) {
     let totalCount = 0;
 
     try {
-      // 먼저 전체 개수를 확인
+      // Count query 최적화: 필요한 컬럼만 선택하고 타임아웃 방지
+      // head: true를 사용하여 데이터를 가져오지 않고 count만 가져옴
       let countQuery = supabase
         .from('sales_data')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .eq('year', yearInt)
         .not('channel', 'is', null); // Channel이 NULL이 아닌 데이터만
 
@@ -37,21 +48,44 @@ export async function GET(request: NextRequest) {
         countQuery = countQuery.in('entity', entities);
       }
 
-      const { count: initialCount, error: countError } = await countQuery;
+      // 타임아웃 방지를 위해 5초 제한
+      const countPromise = countQuery;
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Count query timeout')), 5000)
+      );
+
+      const { count: initialCount, error: countError } = await Promise.race([
+        countPromise,
+        timeoutPromise
+      ]).catch((err) => {
+        console.warn('⚠️ Channel Sales API - Count query timeout or error, proceeding without count:', err);
+        return { count: null, error: null }; // Count 없이 진행
+      }) as any;
       
       if (countError) {
         // If column doesn't exist, return empty array instead of error
         if (countError.code === '42703' || countError.message?.includes('column') || countError.message?.includes('does not exist')) {
           return NextResponse.json([]);
         }
-        console.error('Count query error:', countError);
+        console.error('❌ Channel Sales API - Count query error:', {
+          code: countError.code,
+          message: countError.message,
+          details: countError.details,
+          hint: countError.hint,
+          year: yearInt,
+          entities
+        });
         throw new Error(`Failed to get total count: ${countError.message}`);
       }
 
       totalCount = initialCount || 0;
-      console.log(`📊 Channel Sales - Total records to fetch: ${totalCount} (year: ${yearInt}, entities: ${entities.join(',')})`);
+      console.log(`📊 Channel Sales - Total records to fetch: ${totalCount || 'unknown'} (year: ${yearInt}, entities: ${entities.join(',')})`);
 
-      while (hasMore) {
+      // Count가 없으면 데이터를 가져오면서 카운트 추정
+      let estimatedCount = totalCount;
+      let maxPages = totalCount > 0 ? Math.ceil(totalCount / PAGE_SIZE) : 100; // 최대 100페이지로 제한
+      
+      while (hasMore && page < maxPages) {
         const from = page * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
         
@@ -73,11 +107,19 @@ export async function GET(request: NextRequest) {
         const { data, error } = await query;
         
         if (error) {
-          console.error('Database error (page ' + page + '):', error);
           // If column doesn't exist, return empty array instead of error
           if (error.code === '42703' || error.message?.includes('column') || error.message?.includes('does not exist')) {
             return NextResponse.json([]);
           }
+          console.error('❌ Channel Sales API - Database error (page ' + page + '):', {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+            year: yearInt,
+            entities,
+            page
+          });
           throw new Error(`Database query failed: ${error.message}`);
         }
 
@@ -169,7 +211,11 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('Channel sales API error:', error);
+    console.error('❌ Channel Sales API - Unexpected error:', {
+      message: (error as Error).message,
+      stack: (error as Error).stack,
+      name: (error as Error).name
+    });
     return NextResponse.json(
       { error: 'Failed to fetch channel sales', details: (error as Error).message },
       { status: 500 }

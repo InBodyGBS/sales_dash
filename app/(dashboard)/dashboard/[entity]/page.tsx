@@ -92,10 +92,13 @@ export default function EntityDashboardPage() {
   };
 
   const fetchAllData = async () => {
+    console.log(`🔄 fetchAllData called - year: ${year}, entity: ${entity}`);
     setLoading(true);
     try {
       // Use the entity from URL, not from filters
       const entityParam = entity;
+      
+      console.log(`📊 Fetching dashboard data for year: ${year}, entity: ${entityParam}`);
       
       const basePromises = [
         fetch(`/api/dashboard/summary?year=${year}&entities=${entityParam}`),
@@ -124,14 +127,31 @@ export default function EntityDashboardPage() {
         ...restRes
       ] = await Promise.all(allPromises);
 
-      if (!kpiRes.ok) throw new Error('Failed to fetch KPI data');
-      if (!monthlyRes.ok) throw new Error('Failed to fetch monthly trend');
+      if (!kpiRes.ok) {
+        const errorText = await kpiRes.text();
+        console.error(`❌ KPI API failed (${kpiRes.status}):`, errorText);
+        throw new Error(`Failed to fetch KPI data: ${kpiRes.status} ${errorText}`);
+      }
+      if (!monthlyRes.ok) {
+        const errorText = await monthlyRes.text();
+        console.error(`❌ Monthly trend API failed (${monthlyRes.status}):`, errorText);
+        throw new Error(`Failed to fetch monthly trend: ${monthlyRes.status} ${errorText}`);
+      }
       // Quarterly comparison은 타임아웃 시 빈 배열로 처리 (대량 데이터 처리 중)
       if (!quarterlyRes.ok) {
         console.warn('⚠️ Quarterly comparison failed, using empty data');
       }
       
-      setKpiData(await kpiRes.json());
+      const kpiDataJson = await kpiRes.json();
+      console.log(`✅ KPI data received:`, {
+        year,
+        entity: entityParam,
+        totalAmount: kpiDataJson.totalAmount,
+        prevTotalAmount: kpiDataJson.prevTotalAmount,
+        comparison: kpiDataJson.comparison
+      });
+      
+      setKpiData(kpiDataJson);
       setMonthlyTrend(await monthlyRes.json());
       // Quarterly comparison은 에러 시 빈 배열 사용
       try {

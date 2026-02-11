@@ -17,6 +17,16 @@ export async function GET(request: NextRequest) {
 
     const supabase = createServiceClient();
     const yearInt = parseInt(year);
+    
+    console.log(`📊 Top Products API - Request params:`, { year, yearInt, limit, entities });
+    
+    if (isNaN(yearInt)) {
+      console.error(`❌ Top Products API - Invalid year parameter: "${year}"`);
+      return NextResponse.json(
+        { error: 'Invalid year parameter', details: `Year "${year}" is not a valid number` },
+        { status: 400 }
+      );
+    }
 
     // 모든 데이터를 가져오기 위해 페이지네이션 처리
     const PAGE_SIZE = 1000;
@@ -40,10 +50,10 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // 전체 개수를 확인
+      // Count query 최적화: id만 선택하여 타임아웃 방지
       let countQuery = supabase
         .from('sales_data')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .eq('year', yearInt);
 
       if (useFGFilter) {
@@ -54,17 +64,39 @@ export async function GET(request: NextRequest) {
         countQuery = countQuery.in('entity', entities);
       }
 
-      const { count: initialCount, error: countError } = await countQuery;
+      // 타임아웃 방지를 위해 5초 제한
+      const countPromise = countQuery;
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Count query timeout')), 5000)
+      );
+
+      const { count: initialCount, error: countError } = await Promise.race([
+        countPromise,
+        timeoutPromise
+      ]).catch((err) => {
+        console.warn('⚠️ Top Products API - Count query timeout or error, proceeding without count:', err);
+        return { count: null, error: null }; // Count 없이 진행
+      }) as any;
       
       if (countError) {
-        console.error('Count query error:', countError);
+        console.error('❌ Top Products API - Count query error:', {
+          code: countError.code,
+          message: countError.message,
+          details: countError.details,
+          hint: countError.hint,
+          year: yearInt,
+          entities
+        });
         throw new Error(`Failed to get total count: ${countError.message}`);
       }
 
       totalCount = initialCount || 0;
-      console.log(`📊 Top Products - Total records to fetch: ${totalCount} (year: ${yearInt}, entities: ${entities.join(',')}, useFGFilter: ${useFGFilter})`);
+      console.log(`📊 Top Products - Total records to fetch: ${totalCount || 'unknown'} (year: ${yearInt}, entities: ${entities.join(',')}, useFGFilter: ${useFGFilter})`);
 
-      while (hasMore) {
+      // Count가 없으면 최대 100페이지로 제한
+      let maxPages = totalCount > 0 ? Math.ceil(totalCount / PAGE_SIZE) : 100;
+      
+      while (hasMore && page < maxPages) {
         const from = page * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
         
@@ -95,7 +127,15 @@ export async function GET(request: NextRequest) {
             // 재시도 (이미 useFGFilter가 false이므로 다음 루프에서 다시 시도)
             continue;
           }
-          console.error('Database error (page ' + page + '):', error);
+          console.error('❌ Top Products API - Database error (page ' + page + '):', {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+            year: yearInt,
+            entities,
+            page
+          });
           throw new Error(`Database query failed: ${error.message}`);
         }
 
@@ -300,7 +340,11 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('Top products API error:', error);
+    console.error('❌ Top Products API - Unexpected error:', {
+      message: (error as Error).message,
+      stack: (error as Error).stack,
+      name: (error as Error).name
+    });
     return NextResponse.json(
       { error: 'Failed to fetch top products', details: (error as Error).message },
       { status: 500 }

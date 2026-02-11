@@ -17,6 +17,14 @@ export async function GET(request: NextRequest) {
     const supabase = createServiceClient();
     const yearInt = parseInt(year);
     
+    if (isNaN(yearInt)) {
+      console.error(`❌ Summary API - Invalid year parameter: "${year}"`);
+      return NextResponse.json(
+        { error: 'Invalid year parameter', details: `Year "${year}" is not a valid number` },
+        { status: 400 }
+      );
+    }
+    
     // 디버깅: 받은 year 파라미터 확인
     console.log(`📊 Summary API - Received year parameter: "${year}", parsed as: ${yearInt}, entities: ${entities.join(',')}`);
 
@@ -32,28 +40,50 @@ export async function GET(request: NextRequest) {
     let totalCount = 0;
 
     try {
-      // 먼저 전체 개수를 확인
+      // Count query 최적화: id만 선택하여 타임아웃 방지
       let countQuery = supabase
         .from('sales_data')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .eq('year', yearInt);
 
       if (entities.length > 0 && !entities.includes('All')) {
         countQuery = countQuery.in('entity', entities);
       }
 
-      const { count: initialCount, error: countError } = await countQuery;
+      // 타임아웃 방지를 위해 5초 제한
+      const countPromise = countQuery;
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Count query timeout')), 5000)
+      );
+
+      const { count: initialCount, error: countError } = await Promise.race([
+        countPromise,
+        timeoutPromise
+      ]).catch((err) => {
+        console.warn('⚠️ Summary API - Count query timeout or error, proceeding without count:', err);
+        return { count: null, error: null }; // Count 없이 진행
+      }) as any;
       
       if (countError) {
-        console.error('Count query error:', countError);
+        console.error('❌ Summary API - Count query error:', {
+          code: countError.code,
+          message: countError.message,
+          details: countError.details,
+          hint: countError.hint,
+          year: yearInt,
+          entities
+        });
         throw new Error(`Failed to get total count: ${countError.message}`);
       }
 
       totalCount = initialCount || 0;
-      console.log(`📊 Total records to fetch: ${totalCount} (year: ${yearInt}, entities: ${entities.join(',')})`);
+      console.log(`📊 Total records to fetch: ${totalCount || 'unknown'} (year: ${yearInt}, entities: ${entities.join(',')})`);
+
+      // Count가 없으면 최대 100페이지로 제한
+      let maxPages = totalCount > 0 ? Math.ceil(totalCount / PAGE_SIZE) : 100;
 
       // 모든 데이터를 가져올 때까지 반복
-      while (hasMore) {
+      while (hasMore && page < maxPages) {
         const from = page * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
         
@@ -78,7 +108,15 @@ export async function GET(request: NextRequest) {
         const { data, error } = await query;
         
         if (error) {
-          console.error('Database error (page ' + page + '):', error);
+          console.error('❌ Summary API - Database error (page ' + page + '):', {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+            year: yearInt,
+            entities,
+            page
+          });
           throw new Error(`Database query failed: ${error.message}`);
         }
 
@@ -223,17 +261,29 @@ export async function GET(request: NextRequest) {
     let prevTotalCount = 0;
 
     try {
-      // 먼저 이전 연도 전체 개수를 확인
+      // 이전 연도 Count query 최적화: id만 선택하여 타임아웃 방지
       let prevCountQuery = supabase
         .from('sales_data')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .eq('year', prevYear);
 
       if (entities.length > 0 && !entities.includes('All')) {
         prevCountQuery = prevCountQuery.in('entity', entities);
       }
 
-      const { count: prevInitialCount, error: prevCountError } = await prevCountQuery;
+      // 타임아웃 방지를 위해 5초 제한
+      const prevCountPromise = prevCountQuery;
+      const prevTimeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Previous year count query timeout')), 5000)
+      );
+
+      const { count: prevInitialCount, error: prevCountError } = await Promise.race([
+        prevCountPromise,
+        prevTimeoutPromise
+      ]).catch((err) => {
+        console.warn(`⚠️ Summary API - Previous year count query timeout or error, proceeding without count:`, err);
+        return { count: null, error: null }; // Count 없이 진행
+      }) as any;
       
       if (prevCountError) {
         console.error('Previous year count query error:', prevCountError);
@@ -250,7 +300,10 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      while (prevHasMore && prevTotalCount > 0) {
+      // 이전 연도도 최대 100페이지로 제한
+      let prevMaxPages = prevTotalCount > 0 ? Math.ceil(prevTotalCount / PAGE_SIZE) : 100;
+
+      while (prevHasMore && prevTotalCount > 0 && prevPage < prevMaxPages) {
         const from = prevPage * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
         
@@ -431,14 +484,15 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error('Dashboard summary API error:', error);
+    console.error('❌ Summary API - Unexpected error:', {
+      message: (error as Error).message,
+      stack: (error as Error).stack,
+      name: (error as Error).name,
+      year: searchParams.get('year'),
+      entities: searchParams.get('entities')
+    });
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;
-    
-    console.error('Error details:', {
-      message: errorMessage,
-      stack: errorStack,
-    });
     
     return NextResponse.json(
       { 
