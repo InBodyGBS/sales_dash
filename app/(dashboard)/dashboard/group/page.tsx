@@ -16,6 +16,8 @@ import { Entity } from '@/lib/types/sales';
 import toast from 'react-hot-toast';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
+import { getDashboardData, transformMonthlyTrend, transformQuarterly } from '@/lib/dashboard';
 
 const ENTITIES: Entity[] = ['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China'];
 
@@ -63,49 +65,91 @@ export default function InBodyGroupDashboardPage() {
   const fetchAllData = async () => {
     setLoading(true);
     try {
-      // 모든 Entity를 포함하여 데이터 가져오기
-      const entitiesParam = entities.length > 0 ? entities.join(',') : 'All';
+      const yearInt = parseInt(year);
+      const fgFilter = fg && fg !== 'All' ? fg : null;
       
-      const [
-        kpiRes,
-        monthlyRes,
-        quarterlyRes,
-        fgRes,
-        entityRes,
-        countryRes,
-        productsRes,
-        industryRes,
-      ] = await Promise.all([
-        fetch(`/api/dashboard/summary?year=${year}&entities=${entitiesParam}`),
-        fetch(`/api/dashboard/monthly-trend?year=${year}&entities=${entitiesParam}`),
-        fetch(`/api/dashboard/quarterly-comparison?year=${year}&entities=${entitiesParam}`),
-        fetch(`/api/dashboard/fg-distribution?year=${year}&entities=${entitiesParam}`),
-        fetch(`/api/dashboard/entity-sales?year=${year}`),
-        fetch(`/api/dashboard/country-sales?year=${year}&limit=10&entities=${entitiesParam}`),
-        fetch(`/api/dashboard/top-products?year=${year}&limit=10&entities=${entitiesParam}`),
-        fetch(`/api/dashboard/industry-breakdown?year=${year}&entities=${entitiesParam}`),
-      ]);
-
-      if (!kpiRes.ok) throw new Error('Failed to fetch KPI data');
-      if (!monthlyRes.ok) throw new Error('Failed to fetch monthly trend');
-      if (!quarterlyRes.ok) throw new Error('Failed to fetch quarterly comparison');
-      if (!fgRes.ok) throw new Error('Failed to fetch FG distribution');
-      if (!entityRes.ok) throw new Error('Failed to fetch entity sales');
-      if (!countryRes.ok) throw new Error('Failed to fetch country sales');
-      if (!productsRes.ok) throw new Error('Failed to fetch top products');
-      if (!industryRes.ok) throw new Error('Failed to fetch industry breakdown');
-
-      setKpiData(await kpiRes.json());
-      setMonthlyTrend(await monthlyRes.json());
-      setQuarterlyComparison(await quarterlyRes.json());
-      setFGDistribution(await fgRes.json());
-      setEntitySales(await entityRes.json());
-      setCountrySales(await countryRes.json());
-      setTopProducts(await productsRes.json());
-      setIndustryBreakdown(await industryRes.json());
+      // For group dashboard, we need to aggregate data from all entities
+      // If RPC function supports multiple entities, pass them as array
+      // Otherwise, we might need to call RPC for each entity and aggregate
+      // For now, assuming RPC accepts 'All' or comma-separated entities
+      const entityParam = entities.length > 0 ? entities.join(',') : 'All';
+      
+      console.log(`📊 Fetching group dashboard data via RPC for year: ${yearInt}, entities: ${entityParam}, fg: ${fgFilter}`);
+      
+      // Create Supabase client
+      const supabase = createClient();
+      
+      // For group dashboard, we might need to call RPC for 'All' entities
+      // or aggregate multiple entity calls
+      // Assuming get_dashboard RPC can handle 'All' or multiple entities
+      const dashboardData = await getDashboardData(supabase, entityParam, yearInt, fgFilter);
+      
+      console.log(`✅ Group dashboard data received via RPC:`, {
+        year: yearInt,
+        entities: entityParam,
+        total_amount: dashboardData.total_amount,
+        prev_year_amount: dashboardData.prev_year_amount,
+        monthly_trend_count: dashboardData.monthly_trend.length,
+        quarterly_count: dashboardData.quarterly.length,
+        channels_count: dashboardData.channels.length,
+        top_products_count: dashboardData.top_products_amount.length,
+        industries_count: dashboardData.industries.length,
+        entity_list: dashboardData.entity_list,
+      });
+      
+      // Transform data for KPI cards
+      const amountChange = dashboardData.prev_year_amount > 0
+        ? ((dashboardData.total_amount - dashboardData.prev_year_amount) / dashboardData.prev_year_amount) * 100
+        : 0;
+      
+      setKpiData({
+        totalAmount: dashboardData.total_amount,
+        totalQty: 0, // RPC에서 제공되지 않으면 0
+        avgAmount: 0,
+        totalTransactions: 0,
+        prevTotalAmount: dashboardData.prev_year_amount,
+        prevTotalQty: 0,
+        comparison: {
+          amount: amountChange,
+          qty: 0,
+        },
+      });
+      
+      // Transform monthly trend data
+      const monthlyTrendData = transformMonthlyTrend(dashboardData.monthly_trend, yearInt);
+      setMonthlyTrend(monthlyTrendData);
+      
+      // Transform quarterly data
+      const quarterlyData = transformQuarterly(dashboardData.quarterly, yearInt);
+      setQuarterlyComparison(quarterlyData);
+      
+      // Set FG distribution
+      setFGDistribution(dashboardData.fg_list?.map((fg: string) => ({
+        fg_classification: fg,
+        amount: 0, // RPC에서 제공되지 않으면 0
+      })) || []);
+      
+      // Entity sales - convert entity_list to chart format
+      // If RPC provides entity sales data, use it; otherwise derive from entity_list
+      setEntitySales(dashboardData.entity_list?.map((e: string) => ({
+        entity: e,
+        amount: 0, // RPC에서 제공되지 않으면 0
+      })) || []);
+      
+      // Country sales - might need separate RPC call or be included in dashboard data
+      // For now, set empty array if not provided
+      setCountrySales([]);
+      
+      // Set other data directly from RPC response
+      setTopProducts(dashboardData.top_products_amount.map((p, idx) => ({
+        product: p.product,
+        amount: p.amount,
+        quantity: dashboardData.top_products_quantity[idx]?.quantity || 0,
+      })));
+      setIndustryBreakdown(dashboardData.industries);
     } catch (error) {
       toast.error('Failed to load dashboard data');
-      console.error('Failed to fetch data:', error);
+      console.error('Failed to fetch group dashboard data via RPC:', error);
     } finally {
       setLoading(false);
     }

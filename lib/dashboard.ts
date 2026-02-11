@@ -1,0 +1,184 @@
+// lib/dashboard.ts
+// Supabase RPC 기반 대시보드 데이터 호출 유틸리티
+
+import { SupabaseClient } from "@supabase/supabase-js";
+
+// ============================================
+// Types
+// ============================================
+export interface DashboardData {
+  total_amount: number;
+  prev_year_amount: number;
+  monthly_trend: { year: number; month: number; amount: number }[];
+  quarterly: { year: number; quarter: string; amount: number }[];
+  channels: { channel: string; amount: number }[];
+  top_products_amount: { product: string; amount: number }[];
+  top_products_quantity: { product: string; quantity: number }[];
+  categories: string[];
+  all_products: { product: string; category: string; amount: number; qty: number }[];
+  industries: {
+    industry: string;
+    amount: number;
+    percentage: number;
+  }[];
+  fg_list: string[];
+  entity_list: string[];
+  year_list: number[];
+}
+
+// ============================================
+// Fetch: 대시보드 전체 데이터 (단일 RPC 호출)
+// ============================================
+export async function getDashboardData(
+  supabase: SupabaseClient<any, "public", any>,
+  entity: string,
+  year: number,
+  fgFilter?: string | null
+): Promise<DashboardData> {
+  const { data, error } = await supabase.rpc("get_dashboard", {
+    p_entity: entity,
+    p_year: year,
+    p_fg: fgFilter ?? null,
+  });
+
+  if (error) {
+    console.error("Dashboard RPC error:", error);
+    throw new Error(`Failed to fetch dashboard: ${error.message}`);
+  }
+
+  return data as DashboardData;
+}
+
+// ============================================
+// Helpers
+// ============================================
+
+/** YoY 변화율 계산 */
+export function calcYoYChange(current: number, previous: number): string {
+  if (previous === 0) return "N/A";
+  const change = ((current - previous) / Math.abs(previous)) * 100;
+  return `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`;
+}
+
+/** 금액 포맷팅 ($1,234,567.89) */
+export function formatAmount(
+  amount: number,
+  currency: string = "USD"
+): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+  }).format(amount);
+}
+
+/**
+ * Monthly Trend 데이터를 MonthlyTrendChart 컴포넌트 형식으로 변환
+ * 
+ * MonthlyTrendChart expects:
+ * { month: number, amount: number, qty: number, prevAmount?: number, prevQty?: number }
+ */
+export function transformMonthlyTrend(
+  data: DashboardData["monthly_trend"],
+  currentYear: number
+) {
+  const months = Array.from({ length: 12 }, (_, i) => i + 1);
+
+  return months.map((month) => ({
+    month,
+    amount:
+      data.find((d) => d.year === currentYear && d.month === month)?.amount ?? 0,
+    qty: 0,
+    prevAmount:
+      data.find((d) => d.year === currentYear - 1 && d.month === month)?.amount ?? 0,
+    prevQty: 0,
+  }));
+}
+
+/**
+ * Quarterly 데이터를 QuarterlyComparisonChart 컴포넌트 형식으로 변환
+ */
+export function transformQuarterly(
+  data: DashboardData["quarterly"],
+  currentYear: number
+) {
+  const quarters = ["Q1", "Q2", "Q3", "Q4"];
+
+  return quarters.map((q) => ({
+    quarter: q,
+    currentYear:
+      data.find((d) => d.year === currentYear && d.quarter === q)?.amount ?? 0,
+    previousYear:
+      data.find((d) => d.year === currentYear - 1 && d.quarter === q)?.amount ?? 0,
+  }));
+}
+
+/**
+ * Top Products 데이터를 TopProductsChart 컴포넌트 형식으로 변환
+ * 
+ * TopProductsChart expects (new format):
+ * {
+ *   byAmount: { product, amount, qty, category }[],
+ *   byQuantity: { product, amount, qty, category }[],
+ *   categories: string[],
+ *   allProducts: { product, amount, qty, category }[]
+ * }
+ */
+export function transformTopProducts(dashboardData: DashboardData) {
+  const byAmount = dashboardData.top_products_amount.map((p) => {
+    const qtyMatch = dashboardData.top_products_quantity.find(
+      (q) => q.product === p.product
+    );
+    const allMatch = dashboardData.all_products.find(
+      (a) => a.product === p.product
+    );
+    return {
+      product: p.product,
+      amount: p.amount,
+      qty: qtyMatch?.quantity || 0,
+      category: allMatch?.category || null,
+    };
+  });
+
+  const byQuantity = dashboardData.top_products_quantity.map((q) => {
+    const amountMatch = dashboardData.top_products_amount.find(
+      (a) => a.product === q.product
+    );
+    const allMatch = dashboardData.all_products.find(
+      (a) => a.product === q.product
+    );
+    return {
+      product: q.product,
+      amount: amountMatch?.amount || 0,
+      qty: q.quantity,
+      category: allMatch?.category || null,
+    };
+  });
+
+  return {
+    byAmount,
+    byQuantity,
+    categories: dashboardData.categories || [],
+    allProducts: dashboardData.all_products.map((p) => ({
+      product: p.product,
+      amount: p.amount,
+      qty: p.qty,
+      category: p.category,
+    })),
+  };
+}
+
+// ============================================
+// 주간 갱신 트리거 (관리자용)
+// ============================================
+export async function refreshDashboard(
+  supabase: SupabaseClient<any, "public", any>
+): Promise<string> {
+  const { data, error } = await supabase.rpc("refresh_dashboard");
+
+  if (error) {
+    throw new Error(`Refresh failed: ${error.message}`);
+  }
+
+  return data as string;
+}

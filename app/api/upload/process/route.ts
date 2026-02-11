@@ -880,6 +880,21 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ Upload complete: ${totalInserted} rows inserted, ${totalSkipped} rows skipped`);
 
+    // 데이터 업로드 완료 후 대시보드 캐시 갱신
+    try {
+      console.log('🔄 Refreshing dashboard cache...');
+      const { error: refreshError } = await supabase.rpc('refresh_dashboard');
+      if (refreshError) {
+        console.warn('⚠️ Failed to refresh dashboard cache:', refreshError.message);
+        // 대시보드 갱신 실패는 업로드 성공에 영향을 주지 않음
+      } else {
+        console.log('✅ Dashboard cache refreshed successfully');
+      }
+    } catch (refreshError) {
+      console.warn('⚠️ Error refreshing dashboard cache:', refreshError);
+      // 대시보드 갱신 실패는 업로드 성공에 영향을 주지 않음
+    }
+
     return NextResponse.json({
       success: true,
       rowsInserted: totalInserted,

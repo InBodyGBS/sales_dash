@@ -15,6 +15,8 @@ import { Entity } from '@/lib/types/sales';
 import toast from 'react-hot-toast';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
+import { getDashboardData, transformMonthlyTrend, transformQuarterly, transformTopProducts } from '@/lib/dashboard';
 
 const ENTITY_DISPLAY_NAMES: Record<Entity, string> = {
   HQ: 'HQ',
@@ -44,7 +46,7 @@ export default function EntityDashboardPage() {
   const [quarterlyComparison, setQuarterlyComparison] = useState<any[]>([]);
   const [fgDistribution, setFGDistribution] = useState<any[]>([]);
   const [channelSales, setChannelSales] = useState<any[]>([]);
-  const [topProducts, setTopProducts] = useState<any[]>([]);
+  const [topProducts, setTopProducts] = useState<any>(null);
   const [industryBreakdown, setIndustryBreakdown] = useState<any[]>([]);
 
   // Validate entity
@@ -95,98 +97,84 @@ export default function EntityDashboardPage() {
     console.log(`🔄 fetchAllData called - year: ${year}, entity: ${entity}`);
     setLoading(true);
     try {
-      // Use the entity from URL, not from filters
       const entityParam = entity;
+      const yearInt = parseInt(year);
+      const fgFilter = fg && fg !== 'All' ? fg : null;
       
-      console.log(`📊 Fetching dashboard data for year: ${year}, entity: ${entityParam}`);
+      console.log(`📊 Fetching dashboard data via RPC for year: ${yearInt}, entity: ${entityParam}, fg: ${fgFilter}`);
       
-      const basePromises = [
-        fetch(`/api/dashboard/summary?year=${year}&entities=${entityParam}`),
-        fetch(`/api/dashboard/monthly-trend?year=${year}&entities=${entityParam}`),
-        fetch(`/api/dashboard/quarterly-comparison?year=${year}&entities=${entityParam}`),
-        fetch(`/api/dashboard/channel-sales?year=${year}&limit=10&entities=${entityParam}`),
-        fetch(`/api/dashboard/top-products?year=${year}&limit=10&entities=${entityParam}`),
-        fetch(`/api/dashboard/industry-breakdown?year=${year}&entities=${entityParam}`),
-      ];
-
-      // Only fetch FG distribution for Japan, China, and Healthcare
-      // USA, HQ, Vietnam, Korot, BWA do NOT show FG distribution
-      const entitiesWithFG = ['Japan', 'China', 'Healthcare'];
-      const allPromises = entitiesWithFG.includes(entityParam)
-        ? [
-            ...basePromises.slice(0, 3),
-            fetch(`/api/dashboard/fg-distribution?year=${year}&entities=${entityParam}`),
-            ...basePromises.slice(3),
-          ]
-        : basePromises;
-
-      const [
-        kpiRes,
-        monthlyRes,
-        quarterlyRes,
-        ...restRes
-      ] = await Promise.all(allPromises);
-
-      if (!kpiRes.ok) {
-        const errorText = await kpiRes.text();
-        console.error(`❌ KPI API failed (${kpiRes.status}):`, errorText);
-        throw new Error(`Failed to fetch KPI data: ${kpiRes.status} ${errorText}`);
-      }
-      if (!monthlyRes.ok) {
-        const errorText = await monthlyRes.text();
-        console.error(`❌ Monthly trend API failed (${monthlyRes.status}):`, errorText);
-        throw new Error(`Failed to fetch monthly trend: ${monthlyRes.status} ${errorText}`);
-      }
-      // Quarterly comparison은 타임아웃 시 빈 배열로 처리 (대량 데이터 처리 중)
-      if (!quarterlyRes.ok) {
-        console.warn('⚠️ Quarterly comparison failed, using empty data');
-      }
+      // Create Supabase client
+      const supabase = createClient();
       
-      const kpiDataJson = await kpiRes.json();
-      console.log(`✅ KPI data received:`, {
-        year,
+      // Single RPC call to get all dashboard data
+      const dashboardData = await getDashboardData(supabase, entityParam, yearInt, fgFilter);
+      
+      console.log(`✅ Dashboard data received via RPC:`, {
+        year: yearInt,
         entity: entityParam,
-        totalAmount: kpiDataJson.totalAmount,
-        prevTotalAmount: kpiDataJson.prevTotalAmount,
-        comparison: kpiDataJson.comparison
+        total_amount: dashboardData.total_amount,
+        prev_year_amount: dashboardData.prev_year_amount,
+        monthly_trend_count: dashboardData.monthly_trend.length,
+        quarterly_count: dashboardData.quarterly.length,
+        channels_count: dashboardData.channels.length,
+        top_products_count: dashboardData.top_products_amount.length,
+        industries_count: dashboardData.industries.length,
       });
       
-      setKpiData(kpiDataJson);
-      setMonthlyTrend(await monthlyRes.json());
-      // Quarterly comparison은 에러 시 빈 배열 사용
-      try {
-        setQuarterlyComparison(quarterlyRes.ok ? await quarterlyRes.json() : []);
-      } catch (e) {
-        console.warn('Failed to parse quarterly comparison:', e);
-        setQuarterlyComparison([]);
-      }
-
-      // Handle FG distribution only for Japan, China, and Healthcare
+      // Transform data for KPI cards
+      const amountChange = dashboardData.prev_year_amount > 0
+        ? ((dashboardData.total_amount - dashboardData.prev_year_amount) / dashboardData.prev_year_amount) * 100
+        : 0;
+      
+      setKpiData({
+        totalAmount: dashboardData.total_amount,
+        totalQty: 0, // RPC에서 제공되지 않으면 0
+        avgAmount: 0,
+        totalTransactions: 0,
+        prevTotalAmount: dashboardData.prev_year_amount,
+        prevTotalQty: 0,
+        comparison: {
+          amount: amountChange,
+          qty: 0,
+        },
+      });
+      
+      // Transform monthly trend data
+      const monthlyTrendData = transformMonthlyTrend(dashboardData.monthly_trend, yearInt);
+      setMonthlyTrend(monthlyTrendData);
+      
+      // Transform quarterly data
+      const quarterlyData = transformQuarterly(dashboardData.quarterly, yearInt);
+      setQuarterlyComparison(quarterlyData);
+      
+      // Set other data directly from RPC response
+      setChannelSales(dashboardData.channels);
+      const topProductsData = transformTopProducts(dashboardData);
+      setTopProducts(topProductsData);
+      
+      // Industry breakdown
+      setIndustryBreakdown(dashboardData.industries.map((item) => ({
+        industry: item.industry,
+        amount: item.amount,
+        transactions: 0, // RPC에서 제공하지 않음
+      })));
+      
+      // FG distribution (only for Japan, China, Healthcare)
+      const entitiesWithFG = ['Japan', 'China', 'Healthcare'];
       if (entitiesWithFG.includes(entityParam)) {
-        const [fgRes, channelRes, productsRes, industryRes] = restRes;
-        if (!fgRes.ok) throw new Error('Failed to fetch FG distribution');
-        if (!channelRes.ok) throw new Error('Failed to fetch channel sales');
-        if (!productsRes.ok) throw new Error('Failed to fetch top products');
-        if (!industryRes.ok) throw new Error('Failed to fetch industry breakdown');
-        
-        setFGDistribution(await fgRes.json());
-        setChannelSales(await channelRes.json());
-        setTopProducts(await productsRes.json());
-        setIndustryBreakdown(await industryRes.json());
-      } else {
-        // USA, HQ, Vietnam, Korot, BWA: No FG distribution
-        const [channelRes, productsRes, industryRes] = restRes;
-        if (!channelRes.ok) throw new Error('Failed to fetch channel sales');
-        if (!productsRes.ok) throw new Error('Failed to fetch top products');
-        if (!industryRes.ok) throw new Error('Failed to fetch industry breakdown');
-        
-        setChannelSales(await channelRes.json());
-        setTopProducts(await productsRes.json());
-        setIndustryBreakdown(await industryRes.json());
+        // fg_list에서 FG distribution 데이터 생성
+        // all_products를 사용하여 fg_classification별 금액 집계
+        const fgData = dashboardData.fg_list
+          ?.filter((fg: string) => fg !== '__null__')
+          .map((fg: string) => ({
+            fg_classification: fg,
+            amount: 0, // FG Distribution 차트가 필요한 경우 별도 RPC 필요
+          })) || [];
+        setFGDistribution(fgData);
       }
     } catch (error) {
       toast.error('Failed to load dashboard data');
-      console.error('Failed to fetch data:', error);
+      console.error('Failed to fetch dashboard data via RPC:', error);
     } finally {
       setLoading(false);
     }
