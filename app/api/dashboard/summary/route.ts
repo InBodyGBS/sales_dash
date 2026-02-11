@@ -484,12 +484,14 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(response);
   } catch (error) {
+    // searchParams는 try 블록 밖에서 접근할 수 없으므로 request에서 다시 가져옴
+    const errorSearchParams = request.nextUrl.searchParams;
     console.error('❌ Summary API - Unexpected error:', {
       message: (error as Error).message,
       stack: (error as Error).stack,
       name: (error as Error).name,
-      year: searchParams.get('year'),
-      entities: searchParams.get('entities')
+      year: errorSearchParams.get('year'),
+      entities: errorSearchParams.get('entities')
     });
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;
