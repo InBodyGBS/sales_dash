@@ -38,6 +38,15 @@ export function formatJPY(amount: number): string {
   }).format(amount);
 }
 
+export function formatCNH(amount: number): string {
+  return new Intl.NumberFormat('zh-CN', {
+    style: 'currency',
+    currency: 'CNY', // CNH uses CNY format (Chinese Yuan)
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
 // Compact formatters for Y-axis (M unit only, no K unit)
 export function formatCompactCurrency(amount: number, currency: string = 'USD'): string {
   // Always use M unit, no K unit
@@ -55,6 +64,11 @@ export function formatCompactVND(amount: number): string {
 }
 
 export function formatCompactJPY(amount: number): string {
+  // Always use M unit, no K unit
+  return `${(amount / 1000000).toFixed(1)}M`;
+}
+
+export function formatCompactCNH(amount: number): string {
   // Always use M unit, no K unit
   return `${(amount / 1000000).toFixed(1)}M`;
 }

@@ -38,19 +38,48 @@ export default function DashboardPage() {
       const res = await fetch('/api/entities/available');
       const data = await res.json();
       
+      let available: Entity[] = [];
+      
       if (data.entities && Array.isArray(data.entities)) {
         // Filter to only include entities that are in our ENTITIES list
-        const available = data.entities.filter((e: string) => 
+        available = data.entities.filter((e: string) => 
           ENTITIES.includes(e as Entity)
         ) as Entity[];
-        setAvailableEntities(available);
-      } else {
-        // Fallback: if API fails, show all entities
-        setAvailableEntities(ENTITIES);
       }
+      
+      // If China is missing from API response but is in ENTITIES, check it individually
+      // This ensures China is always checked even if API doesn't return it
+      if (!available.includes('China') && ENTITIES.includes('China')) {
+        try {
+          const chinaRes = await fetch('/api/years?entity=China');
+          const chinaData = await chinaRes.json();
+          if (chinaData.years && chinaData.years.length > 0) {
+            available.push('China');
+            console.log('✅ China data found via individual check');
+          }
+        } catch (chinaError) {
+          console.warn('⚠️ Failed to check China individually:', chinaError);
+        }
+      }
+      
+      // If Japan is missing, check it too
+      if (!available.includes('Japan') && ENTITIES.includes('Japan')) {
+        try {
+          const japanRes = await fetch('/api/years?entity=Japan');
+          const japanData = await japanRes.json();
+          if (japanData.years && japanData.years.length > 0) {
+            available.push('Japan');
+            console.log('✅ Japan data found via individual check');
+          }
+        } catch (japanError) {
+          console.warn('⚠️ Failed to check Japan individually:', japanError);
+        }
+      }
+      
+      setAvailableEntities(available);
     } catch (error) {
       console.error('Failed to fetch available entities:', error);
-      // Fallback to all entities if API fails
+      // Fallback: if API fails, show all entities
       setAvailableEntities(ENTITIES);
     } finally {
       setLoading(false);

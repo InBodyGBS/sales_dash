@@ -80,10 +80,27 @@ export async function GET(request: NextRequest) {
     }
 
     // Group by FG classification
+    // Normalize FG values to 'FG' or 'NonFG'
+    const normalizeFG = (fg: string | null | undefined): string => {
+      if (!fg || fg.trim() === '' || fg.toLowerCase() === 'null' || fg === '__null__') {
+        return 'NonFG';
+      }
+      const normalized = fg.trim();
+      // Normalize common variations to 'FG' or 'NonFG'
+      if (normalized.toLowerCase() === 'fg' || normalized.toLowerCase() === 'finished goods' || normalized.toLowerCase() === 'finishedgoods') {
+        return 'FG';
+      }
+      if (normalized.toLowerCase() === 'nonfg' || normalized.toLowerCase() === 'non-fg' || normalized.toLowerCase() === 'non_fg' || normalized.toLowerCase() === 'non finished goods') {
+        return 'NonFG';
+      }
+      // If it's not a recognized NonFG variant, assume it's FG
+      return normalized === 'NonFG' ? 'NonFG' : 'FG';
+    };
+
     const fgMap = new Map<string, number>();
 
     data.forEach((row) => {
-      const fg = row.fg_classification || 'NonFG';
+      const fg = normalizeFG(row.fg_classification);
       const amount = Number(row.line_amount_mst || 0);
       
       fgMap.set(fg, (fgMap.get(fg) || 0) + (isNaN(amount) ? 0 : amount));

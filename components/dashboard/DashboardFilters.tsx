@@ -81,7 +81,7 @@ export function DashboardFilters({
     }
   };
 
-  const allEntities: Entity[] = ['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot'];
+  const allEntities: Entity[] = ['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China'];
   const isAllSelected = entities.length === allEntities.length;
 
   const handleEntityToggle = (entity: Entity) => {

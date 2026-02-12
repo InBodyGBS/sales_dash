@@ -162,15 +162,27 @@ export default function EntityDashboardPage() {
       // FG distribution (only for Japan, China, Healthcare)
       const entitiesWithFG = ['Japan', 'China', 'Healthcare'];
       if (entitiesWithFG.includes(entityParam)) {
-        // fg_list에서 FG distribution 데이터 생성
-        // all_products를 사용하여 fg_classification별 금액 집계
-        const fgData = dashboardData.fg_list
-          ?.filter((fg: string) => fg !== '__null__')
-          .map((fg: string) => ({
-            fg_classification: fg,
-            amount: 0, // FG Distribution 차트가 필요한 경우 별도 RPC 필요
-          })) || [];
-        setFGDistribution(fgData);
+        // Fetch FG distribution data from API
+        try {
+          const fgRes = await fetch(`/api/dashboard/fg-distribution?year=${yearInt}&entities=${entityParam}`);
+          if (fgRes.ok) {
+            const fgData = await fgRes.json();
+            // Transform API response to match chart format
+            const transformedFgData = fgData.map((item: any) => ({
+              fg: item.fg || item.fg_classification || 'NonFG',
+              amount: item.amount || 0,
+              percentage: item.percentage || 0,
+            }));
+            setFGDistribution(transformedFgData);
+            console.log(`✅ FG distribution data loaded:`, transformedFgData);
+          } else {
+            console.warn('⚠️ Failed to fetch FG distribution, using empty data');
+            setFGDistribution([]);
+          }
+        } catch (fgError) {
+          console.error('❌ Error fetching FG distribution:', fgError);
+          setFGDistribution([]);
+        }
       }
     } catch (error) {
       toast.error('Failed to load dashboard data');
@@ -286,7 +298,7 @@ export default function EntityDashboardPage() {
 
               {/* FG Distribution and Channel Sales Section */}
               <div className="grid gap-6 md:grid-cols-2">
-                <FGDistributionChart data={fgDistribution} loading={loading} />
+                <FGDistributionChart data={fgDistribution} loading={loading} entity={entity} />
                 <ChannelSalesChart data={channelSales} loading={loading} entity={entity} />
               </div>
             </>

@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DollarSign, Package, TrendingUp, FileText, ArrowUp, ArrowDown } from 'lucide-react';
-import { formatCurrency, formatNumber, formatKRW, formatVND, formatJPY } from '@/lib/utils/formatters';
+import { formatCurrency, formatNumber, formatKRW, formatVND, formatJPY, formatCNH } from '@/lib/utils/formatters';
 import { Entity } from '@/lib/types/sales';
 
 interface KPICardsProps {
@@ -26,6 +26,7 @@ export function KPICards({ data, loading, entity }: KPICardsProps) {
   const isKRWEntity = entity && ['HQ', 'Healthcare', 'Korot'].includes(entity);
   const isVNDEntity = entity === 'Vietnam';
   const isJPYEntity = entity === 'Japan';
+  const isCNHEntity = entity === 'China';
   
   if (loading) {
     return (
@@ -132,6 +133,36 @@ export function KPICards({ data, loading, entity }: KPICardsProps) {
               <span>{Math.abs(data.comparison.amount).toFixed(1)}% vs previous period</span>
             </div>
             <p className="text-xs text-muted-foreground mt-1">Total sales amount (JPY)</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // For China: show Total Amount with CNH format
+  if (isCNHEntity) {
+    return (
+      <div className="grid gap-4 md:grid-cols-1">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Amount</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCNH(data.totalAmount)}</div>
+            {data.prevTotalAmount !== undefined && data.prevTotalAmount > 0 && (
+              <div className="text-sm text-muted-foreground mt-1">
+                Previous year: {formatCNH(data.prevTotalAmount)}
+              </div>
+            )}
+            <div className={`flex items-center text-xs mt-1 ${data.comparison.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {data.comparison.amount >= 0 ? (
+                <ArrowUp className="h-3 w-3 mr-1" />
+              ) : (
+                <ArrowDown className="h-3 w-3 mr-1" />
+              )}
+              <span>{Math.abs(data.comparison.amount).toFixed(1)}% vs previous period</span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Total sales amount (CNH)</p>
           </CardContent>
         </Card>
       </div>

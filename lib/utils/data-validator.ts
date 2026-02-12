@@ -4,7 +4,7 @@ import { Entity } from '@/lib/types/sales';
 // No strict required columns - we'll accept any columns that exist
 // But we'll validate that we have at least some data
 const MINIMUM_COLUMNS = ['Invoice date', 'Invoice', 'Currency'];
-const VALID_ENTITIES: Entity[] = ['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot'];
+const VALID_ENTITIES: Entity[] = ['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China'];
 
 export interface ValidationError {
   row: number;

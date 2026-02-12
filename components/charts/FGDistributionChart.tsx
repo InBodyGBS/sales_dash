@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { formatCurrency } from '@/lib/utils/formatters';
+import { formatCurrency, formatCNH, formatJPY } from '@/lib/utils/formatters';
 
 interface FGDistributionData {
   fg: string;
@@ -13,6 +13,7 @@ interface FGDistributionData {
 interface FGDistributionChartProps {
   data: FGDistributionData[];
   loading?: boolean;
+  entity?: string;
 }
 
 const COLORS = {
@@ -20,7 +21,7 @@ const COLORS = {
   NonFG: '#6B7280',
 };
 
-export function FGDistributionChart({ data, loading }: FGDistributionChartProps) {
+export function FGDistributionChart({ data, loading, entity }: FGDistributionChartProps) {
   if (loading) {
     return (
       <Card>
@@ -84,7 +85,16 @@ export function FGDistributionChart({ data, loading }: FGDistributionChartProps)
                 />
               ))}
             </Pie>
-            <Tooltip formatter={(value: number) => formatCurrency(value, 'USD')} />
+            <Tooltip 
+              formatter={(value: number) => {
+                if (entity === 'China') {
+                  return formatCNH(value);
+                } else if (entity === 'Japan') {
+                  return formatJPY(value);
+                }
+                return formatCurrency(value, 'USD');
+              }} 
+            />
             <Legend />
           </PieChart>
         </ResponsiveContainer>
