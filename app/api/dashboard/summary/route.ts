@@ -317,7 +317,6 @@ export async function GET(request: NextRequest) {
     }
 
     // Get previous period data for comparison - 모든 페이지 가져오기
-    const prevYear = yearInt - 1;
     let allPrevData: any[] = [];
     let prevPage = 0;
     let prevHasMore = true;
