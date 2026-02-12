@@ -5,12 +5,12 @@ CREATE OR REPLACE FUNCTION get_distinct_entities()
 RETURNS TABLE(entity TEXT) AS $$
 BEGIN
   RETURN QUERY
-  SELECT DISTINCT sales_data.entity::TEXT
-  FROM sales_data
-  WHERE sales_data.entity IS NOT NULL
-  ORDER BY sales_data.entity::TEXT;
+  SELECT DISTINCT mv_sales_cube.entity::TEXT
+  FROM mv_sales_cube
+  WHERE mv_sales_cube.entity IS NOT NULL
+  ORDER BY mv_sales_cube.entity::TEXT;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql STABLE;
 
 -- Grant execute permission to authenticated users
 GRANT EXECUTE ON FUNCTION get_distinct_entities() TO authenticated;

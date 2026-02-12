@@ -66,7 +66,7 @@ export async function GET() {
       const to = from + PAGE_SIZE - 1;
       
       const { data, error } = await supabase
-        .from('sales_data')
+        .from('mv_sales_cube')
         .select('entity')
         .not('entity', 'is', null)
         .order('entity', { ascending: true })

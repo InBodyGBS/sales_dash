@@ -18,7 +18,7 @@ BEGIN
             COALESCE(SUM(quantity), 0) as total_quantity,
             COUNT(CASE WHEN line_amount_mst IS NULL THEN 1 END) as null_amount_count,
             COUNT(CASE WHEN line_amount_mst = 0 THEN 1 END) as zero_amount_count
-        FROM sales_data
+        FROM mv_sales_cube
         WHERE year = p_year
             AND (p_entities IS NULL OR entity = ANY(p_entities))
     ),
@@ -27,7 +27,7 @@ BEGIN
             COUNT(*) as total_records,
             COALESCE(SUM(line_amount_mst), 0) as total_amount,
             COALESCE(SUM(quantity), 0) as total_quantity
-        FROM sales_data
+        FROM mv_sales_cube
         WHERE year = p_prev_year
             AND (p_entities IS NULL OR entity = ANY(p_entities))
             AND p_prev_year IS NOT NULL
@@ -75,7 +75,7 @@ BEGIN
                 EXTRACT(MONTH FROM invoice_date)::INTEGER as month,
                 COALESCE(SUM(line_amount_mst), 0) as total_amount,
                 COALESCE(SUM(quantity), 0) as total_quantity
-            FROM sales_data
+            FROM mv_sales_cube
             WHERE year = p_year
                 AND invoice_date IS NOT NULL
                 AND (p_entities IS NULL OR entity = ANY(p_entities))
@@ -115,7 +115,7 @@ BEGIN
                     quarter,
                     COALESCE(SUM(line_amount_mst), 0) as total_amount,
                     COALESCE(SUM(quantity), 0) as total_quantity
-                FROM sales_data
+                FROM mv_sales_cube
                 WHERE year = p_year
                     AND (p_entities IS NULL OR entity = ANY(p_entities))
                 GROUP BY quarter
@@ -125,7 +125,7 @@ BEGIN
                     quarter,
                     COALESCE(SUM(line_amount_mst), 0) as total_amount,
                     COALESCE(SUM(quantity), 0) as total_quantity
-                FROM sales_data
+                FROM mv_sales_cube
                 WHERE year = p_prev_year
                     AND (p_entities IS NULL OR entity = ANY(p_entities))
                     AND p_prev_year IS NOT NULL

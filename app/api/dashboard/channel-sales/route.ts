@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
       // Count query 최적화: 필요한 컬럼만 선택하고 타임아웃 방지
       // head: true를 사용하여 데이터를 가져오지 않고 count만 가져옴
       let countQuery = supabase
-        .from('sales_data')
+        .from('mv_sales_cube')
         .select('id', { count: 'exact', head: true })
         .eq('year', yearInt)
         .not('channel', 'is', null); // Channel이 NULL이 아닌 데이터만
@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
         
         // 정렬을 추가하여 일관된 결과 보장
         let query = supabase
-          .from('sales_data')
+          .from('mv_sales_cube')
           .select('channel, line_amount_mst', { count: 'exact', head: false })
           .eq('year', yearInt)
           .not('channel', 'is', null) // Channel이 NULL이 아닌 데이터만

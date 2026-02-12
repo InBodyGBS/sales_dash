@@ -308,7 +308,7 @@ export default function EntityDashboardPage() {
           <TopProductsChart data={topProducts} loading={loading} entity={entity} />
 
           {/* Industry Analysis Section */}
-          <IndustryBreakdownChart data={industryBreakdown} loading={loading} />
+          <IndustryBreakdownChart data={industryBreakdown} loading={loading} entity={entity} />
 
           {/* Data Table Section */}
           <SalesDataTable

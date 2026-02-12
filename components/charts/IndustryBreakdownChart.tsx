@@ -2,7 +2,8 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { formatCurrency, formatNumber } from '@/lib/utils/formatters';
+import { formatCurrency, formatNumber, formatKRW, formatVND, formatJPY, formatCNH } from '@/lib/utils/formatters';
+import { Entity } from '@/lib/types/sales';
 
 interface IndustryBreakdownData {
   industry: string;
@@ -13,6 +14,7 @@ interface IndustryBreakdownData {
 interface IndustryBreakdownChartProps {
   data: IndustryBreakdownData[];
   loading?: boolean;
+  entity?: Entity;
 }
 
 const COLORS = [
@@ -28,7 +30,11 @@ const COLORS = [
   '#6366F1',
 ];
 
-export function IndustryBreakdownChart({ data, loading }: IndustryBreakdownChartProps) {
+export function IndustryBreakdownChart({ data, loading, entity }: IndustryBreakdownChartProps) {
+  const isKRWEntity = entity && ['HQ', 'Healthcare', 'Korot'].includes(entity);
+  const isVNDEntity = entity === 'Vietnam';
+  const isJPYEntity = entity === 'Japan';
+  const isCNHEntity = entity === 'China';
   if (loading) {
     return (
       <Card>
@@ -97,9 +103,21 @@ export function IndustryBreakdownChart({ data, loading }: IndustryBreakdownChart
             <Tooltip
               formatter={(value: number, name: string, props: any) => {
                 if (name === 'value') {
+                  let formattedAmount: string;
+                  if (isKRWEntity) {
+                    formattedAmount = formatKRW(value);
+                  } else if (isVNDEntity) {
+                    formattedAmount = formatVND(value);
+                  } else if (isJPYEntity) {
+                    formattedAmount = formatJPY(value);
+                  } else if (isCNHEntity) {
+                    formattedAmount = formatCNH(value);
+                  } else {
+                    formattedAmount = formatCurrency(value, 'USD');
+                  }
                   return [
-                    formatCurrency(value, 'USD'),
-                    `Amount: ${formatCurrency(value, 'USD')}, Transactions: ${formatNumber(props.payload.transactions)}`,
+                    formattedAmount,
+                    `Amount: ${formattedAmount}, Transactions: ${formatNumber(props.payload.transactions)}`,
                   ];
                 }
                 return value;

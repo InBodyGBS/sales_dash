@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
           
           // Fallback: Use simple select with limit
           let fallbackQuery = supabase
-            .from('sales_data')
+            .from('mv_sales_cube')
             .select('year')
             .not('year', 'is', null)
             .order('year', { ascending: false })

@@ -28,11 +28,74 @@ export async function GET(request: NextRequest) {
     // 디버깅: 받은 year 파라미터 확인
     console.log(`📊 Summary API - Received year parameter: "${year}", parsed as: ${yearInt}, entities: ${entities.join(',')}`);
 
-    // Total Amount = 연도별 Line Amount_MST의 합계
-    // 모든 페이지를 반복해서 가져와서 전체 합계 계산
+    // Use RPC function for fast aggregation (avoids timeout)
+    const prevYear = yearInt - 1;
+    const entityArray = entities.length > 0 && !entities.includes('All') ? entities : null;
     
-    // 모든 데이터를 가져오기 위해 페이지네이션 처리
-    // Supabase PostgREST의 기본 max-rows 제한이 1000이므로 PAGE_SIZE를 1000으로 설정
+    console.log(`📊 Summary API - Using RPC function get_dashboard_summary:`, {
+      year: yearInt,
+      prevYear,
+      entities: entityArray
+    });
+
+    try {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_dashboard_summary', {
+        p_year: yearInt,
+        p_entities: entityArray,
+        p_prev_year: prevYear
+      });
+
+      if (rpcError) {
+        console.error('❌ Summary API - RPC error:', rpcError);
+        // Fallback to old method if RPC doesn't exist
+        console.log('⚠️ RPC function not available, falling back to pagination method...');
+      } else if (rpcData) {
+        // RPC function returned data successfully
+        const currentYearData = rpcData.current_year || {};
+        const previousYearData = rpcData.previous_year || {};
+        
+        const totalAmount = currentYearData.total_amount || 0;
+        const totalQty = currentYearData.total_quantity || 0;
+        const totalTransactions = currentYearData.total_records || 0;
+        const avgAmount = totalTransactions > 0 ? totalAmount / totalTransactions : 0;
+        
+        const prevTotalAmount = previousYearData.total_amount || 0;
+        const prevTotalQty = previousYearData.total_quantity || 0;
+        
+        const amountChange = prevTotalAmount > 0 
+          ? ((totalAmount - prevTotalAmount) / prevTotalAmount) * 100 
+          : 0;
+        const qtyChange = prevTotalQty > 0 
+          ? ((totalQty - prevTotalQty) / prevTotalQty) * 100 
+          : 0;
+
+        console.log(`✅ Summary API - RPC result:`, {
+          totalAmount,
+          totalQty,
+          totalTransactions,
+          prevTotalAmount,
+          amountChange: `${amountChange.toFixed(2)}%`
+        });
+
+        return NextResponse.json({
+          totalAmount,
+          totalQty,
+          avgAmount,
+          totalTransactions,
+          prevTotalAmount,
+          prevTotalQty,
+          comparison: {
+            amount: amountChange,
+            qty: qtyChange,
+          },
+        });
+      }
+    } catch (rpcError) {
+      console.warn('⚠️ Summary API - RPC call failed, falling back to pagination:', rpcError);
+      // Continue to fallback method below
+    }
+
+    // Fallback: Original pagination method (slower but works if RPC doesn't exist)
     const PAGE_SIZE = 1000;
     let allData: any[] = [];
     let page = 0;
@@ -42,7 +105,7 @@ export async function GET(request: NextRequest) {
     try {
       // Count query 최적화: id만 선택하여 타임아웃 방지
       let countQuery = supabase
-        .from('sales_data')
+        .from('mv_sales_cube')
         .select('id', { count: 'exact', head: true })
         .eq('year', yearInt);
 
@@ -91,7 +154,7 @@ export async function GET(request: NextRequest) {
         // 정렬을 추가하여 일관된 결과 보장 (id로 정렬)
         // entity, year를 포함하여 정확한 집계 확인
         let query = supabase
-          .from('sales_data')
+          .from('mv_sales_cube')
           .select('entity, year, line_amount_mst, quantity', { count: 'exact', head: false })
           .eq('year', yearInt)
           .order('id', { ascending: true }); // 정렬 추가로 일관된 결과 보장
@@ -271,7 +334,7 @@ export async function GET(request: NextRequest) {
     try {
       // 이전 연도 Count query 최적화: id만 선택하여 타임아웃 방지
       let prevCountQuery = supabase
-        .from('sales_data')
+        .from('mv_sales_cube')
         .select('id', { count: 'exact', head: true })
         .eq('year', prevYear);
 
@@ -351,7 +414,7 @@ export async function GET(request: NextRequest) {
         // 각 페이지마다 새로운 쿼리 생성 (정렬 추가)
         // entity, year를 포함하여 정확한 집계 확인
         let prevQuery = supabase
-          .from('sales_data')
+          .from('mv_sales_cube')
           .select('entity, year, line_amount_mst, quantity', { count: 'exact', head: false })
           .eq('year', prevYear)
           .order('id', { ascending: true }); // 정렬 추가

@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
     try {
       // 먼저 전체 개수를 확인
       let countQuery = supabase
-        .from('sales_data')
+        .from('mv_sales_cube')
         .select('*', { count: 'exact', head: true })
         .eq('year', yearInt);
 
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
         
         // 정렬을 추가하여 일관된 결과 보장
         let query = supabase
-          .from('sales_data')
+          .from('mv_sales_cube')
           .select('country, state, city, entity, line_amount_mst', { count: 'exact', head: false })
           .eq('year', yearInt)
           .order('id', { ascending: true }); // 정렬 추가

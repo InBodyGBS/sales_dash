@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
     try {
       // Count query 최적화: id만 선택하여 타임아웃 방지
       let currentCountQuery = supabase
-        .from('sales_data')
+        .from('mv_sales_cube')
         .select('id', { count: 'exact', head: true })
         .eq('year', currentYear)
         .not('quarter', 'is', null);
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
         
         // 정렬을 추가하여 일관된 결과 보장
         let currentQuery = supabase
-          .from('sales_data')
+          .from('mv_sales_cube')
           .select('quarter, line_amount_mst', { count: 'exact', head: false })
           .eq('year', currentYear)
           .not('quarter', 'is', null)
@@ -164,7 +164,7 @@ export async function GET(request: NextRequest) {
     try {
       // 이전 연도 Count query 최적화: id만 선택하여 타임아웃 방지
       let prevCountQuery = supabase
-        .from('sales_data')
+        .from('mv_sales_cube')
         .select('id', { count: 'exact', head: true })
         .eq('year', previousYear)
         .not('quarter', 'is', null);
@@ -205,7 +205,7 @@ export async function GET(request: NextRequest) {
         
         // 정렬을 추가하여 일관된 결과 보장
         let prevQuery = supabase
-          .from('sales_data')
+          .from('mv_sales_cube')
           .select('quarter, line_amount_mst', { count: 'exact', head: false })
           .eq('year', previousYear)
           .not('quarter', 'is', null)

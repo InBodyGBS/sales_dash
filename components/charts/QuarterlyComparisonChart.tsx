@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { formatCurrency, formatKRW, formatVND, formatJPY, formatCompactCurrency, formatCompactKRW, formatCompactVND, formatCompactJPY } from '@/lib/utils/formatters';
+import { formatCurrency, formatKRW, formatVND, formatJPY, formatCNH, formatCompactCurrency, formatCompactKRW, formatCompactVND, formatCompactJPY, formatCompactCNH } from '@/lib/utils/formatters';
 import { Entity } from '@/lib/types/sales';
 
 interface QuarterlyComparisonData {
@@ -22,6 +22,7 @@ export function QuarterlyComparisonChart({ data, currentYear, loading, entity }:
   const isKRWEntity = entity && ['HQ', 'Healthcare', 'Korot'].includes(entity);
   const isVNDEntity = entity === 'Vietnam';
   const isJPYEntity = entity === 'Japan';
+  const isCNHEntity = entity === 'China';
   if (loading) {
     return (
       <Card>
@@ -81,6 +82,7 @@ export function QuarterlyComparisonChart({ data, currentYear, loading, entity }:
                 if (isKRWEntity) return formatCompactKRW(value);
                 if (isVNDEntity) return formatCompactVND(value);
                 if (isJPYEntity) return formatCompactJPY(value);
+                if (isCNHEntity) return formatCompactCNH(value);
                 return formatCompactCurrency(value, 'USD');
               }}
               width={60}
@@ -91,6 +93,7 @@ export function QuarterlyComparisonChart({ data, currentYear, loading, entity }:
                 if (isKRWEntity) return formatKRW(value);
                 if (isVNDEntity) return formatVND(value);
                 if (isJPYEntity) return formatJPY(value);
+                if (isCNHEntity) return formatCNH(value);
                 return formatCurrency(value, 'USD');
               }}
             />

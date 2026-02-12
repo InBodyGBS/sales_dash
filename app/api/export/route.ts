@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
 
     const supabase = await createServiceClient();
 
-    let query = supabase.from('sales_data').select('*');
+    let query = supabase.from('mv_sales_cube').select('*');
 
     if (entity && entity !== 'All') {
       query = query.eq('entity', entity);

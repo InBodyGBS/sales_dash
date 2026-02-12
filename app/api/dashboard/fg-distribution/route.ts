@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
         const to = from + PAGE_SIZE - 1;
         
         let query = supabase
-          .from('sales_data')
+          .from('mv_sales_cube')
           .select('fg_classification, line_amount_mst')
           .eq('year', yearInt);
 

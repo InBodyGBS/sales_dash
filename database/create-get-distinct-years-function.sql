@@ -6,20 +6,20 @@ RETURNS TABLE(year INTEGER) AS $$
 BEGIN
   IF entity_name IS NULL OR entity_name = 'All' THEN
     RETURN QUERY
-    SELECT DISTINCT sales_data.year
-    FROM sales_data
-    WHERE sales_data.year IS NOT NULL
-    ORDER BY sales_data.year DESC;
+    SELECT DISTINCT mv_sales_cube.year
+    FROM mv_sales_cube
+    WHERE mv_sales_cube.year IS NOT NULL
+    ORDER BY mv_sales_cube.year DESC;
   ELSE
     RETURN QUERY
-    SELECT DISTINCT sales_data.year
-    FROM sales_data
-    WHERE sales_data.entity = entity_name
-      AND sales_data.year IS NOT NULL
-    ORDER BY sales_data.year DESC;
+    SELECT DISTINCT mv_sales_cube.year
+    FROM mv_sales_cube
+    WHERE mv_sales_cube.entity = entity_name
+      AND mv_sales_cube.year IS NOT NULL
+    ORDER BY mv_sales_cube.year DESC;
   END IF;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql STABLE;
 
 -- Grant execute permission to authenticated users
 GRANT EXECUTE ON FUNCTION get_distinct_years TO authenticated;

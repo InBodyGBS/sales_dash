@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     try {
       // 먼저 fg_classification 컬럼 존재 여부 확인
       const { error: columnCheckError } = await supabase
-        .from('sales_data')
+        .from('mv_sales_cube')
         .select('fg_classification')
         .limit(1);
 
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
 
       // Count query 최적화: id만 선택하여 타임아웃 방지
       let countQuery = supabase
-        .from('sales_data')
+        .from('mv_sales_cube')
         .select('id', { count: 'exact', head: true })
         .eq('year', yearInt);
 
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
         
         // 정렬을 추가하여 일관된 결과 보장
         let query = supabase
-          .from('sales_data')
+          .from('mv_sales_cube')
           .select('product_name, product, line_amount_mst, quantity, fg_classification, category', { count: 'exact', head: false })
           .eq('year', yearInt)
           .order('id', { ascending: true }); // 정렬 추가
@@ -283,7 +283,7 @@ export async function GET(request: NextRequest) {
     let categoriesFromDB: string[] = [];
     try {
       let categoryQuery = supabase
-        .from('sales_data')
+        .from('mv_sales_cube')
         .select('category')
         .eq('year', yearInt)
         .not('category', 'is', null);

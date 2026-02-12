@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { formatCurrency, formatNumber, formatKRW, formatVND, formatJPY, formatCompactCurrency, formatCompactKRW, formatCompactVND, formatCompactJPY } from '@/lib/utils/formatters';
+import { formatCurrency, formatNumber, formatKRW, formatVND, formatJPY, formatCNH, formatCompactCurrency, formatCompactKRW, formatCompactVND, formatCompactJPY, formatCompactCNH } from '@/lib/utils/formatters';
 import { Entity } from '@/lib/types/sales';
 
 interface MonthlyTrendData {
@@ -26,6 +26,7 @@ export function MonthlyTrendChart({ data, loading, entity, currentYear }: Monthl
   const isKRWEntity = entity && ['HQ', 'Healthcare', 'Korot'].includes(entity);
   const isVNDEntity = entity === 'Vietnam';
   const isJPYEntity = entity === 'Japan';
+  const isCNHEntity = entity === 'China';
   if (loading) {
     return (
       <Card>
@@ -216,6 +217,47 @@ export function MonthlyTrendChart({ data, loading, entity, currentYear }: Monthl
                       return formatJPY(value);
                     }
                     return formatJPY(value);
+                  }}
+                />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey={currentYear ? currentYear.toString() : 'amount'}
+                  stroke="#3B82F6"
+                  strokeWidth={2}
+                  name={currentYear ? currentYear.toString() : 'Amount'}
+                  dot={{ r: 4 }}
+                  connectNulls={true}
+                />
+                {currentYear && (
+                  <Line
+                    type="monotone"
+                    dataKey={(currentYear - 1).toString()}
+                    stroke="#6B7280"
+                    strokeWidth={2}
+                    name={(currentYear - 1).toString()}
+                    dot={{ r: 4 }}
+                    connectNulls={true}
+                  />
+                )}
+              </>
+            ) : isCNHEntity ? (
+              <>
+                <YAxis
+                  domain={yAxisDomain}
+                  tickFormatter={(value) => formatCompactCNH(value)}
+                  width={60}
+                  tick={{ fontSize: 12 }}
+                />
+                <Tooltip
+                  formatter={(value: number, name: string) => {
+                    if (name === currentYear?.toString() || name === 'current') {
+                      return formatCNH(value);
+                    }
+                    if (name === (currentYear ? (currentYear - 1).toString() : 'previous') || name === 'previous') {
+                      return formatCNH(value);
+                    }
+                    return formatCNH(value);
                   }}
                 />
                 <Legend />

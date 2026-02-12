@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
 
     // Build query
     let query = supabase
-      .from('sales_data')
+      .from('mv_sales_cube')
       .select('*', { count: 'exact' });
 
     query = query.eq('year', yearInt);
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
         console.warn('fg_classification column not found, retrying without filter');
         // Retry query without fg filter
         let retryQuery = supabase
-          .from('sales_data')
+          .from('mv_sales_cube')
           .select('*', { count: 'exact' })
           .eq('year', parseInt(year));
 

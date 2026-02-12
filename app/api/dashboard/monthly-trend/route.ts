@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
 
       // Count query 최적화: id만 선택하여 타임아웃 방지
       let countQuery = supabase
-        .from('sales_data')
+        .from('mv_sales_cube')
         .select('id', { count: 'exact', head: true })
         .eq('year', year)
         .not('invoice_date', 'is', null);
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
         // 정렬을 추가하여 일관된 결과 보장
         // entity, year, invoice_date를 모두 가져와서 정확한 집계
         let query = supabase
-          .from('sales_data')
+          .from('mv_sales_cube')
           .select('entity, year, invoice_date, line_amount_mst, quantity', { count: 'exact', head: false })
           .eq('year', year)
           .not('invoice_date', 'is', null)
