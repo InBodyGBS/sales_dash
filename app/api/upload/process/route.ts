@@ -36,8 +36,8 @@ export async function POST(request: NextRequest) {
     // 3. Create Supabase client
     const supabase = createServiceClient();
 
-    // Entities that require item mapping (exclude HQ, USA, BWA, Healthcare, Korot, Vietnam)
-    const entitiesRequiringItemMapping = ['Japan', 'China'];
+    // Entities that require item mapping (Japan, China, India, Mexico, Oceania)
+    const entitiesRequiringItemMapping = ['Japan', 'China', 'India', 'Mexico', 'Oceania'];
     const requiresItemMapping = entitiesRequiringItemMapping.includes(entity);
 
     // 3.1. Load item mapping with fallback logic:

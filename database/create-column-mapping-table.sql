@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS column_mapping (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(entity, excel_column, db_column),
-    CONSTRAINT valid_entity_mapping CHECK (entity IN ('HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China'))
+    CONSTRAINT valid_entity_mapping CHECK (entity IN ('HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania'))
 );
 
 -- Index for faster lookups

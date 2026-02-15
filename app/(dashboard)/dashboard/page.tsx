@@ -8,7 +8,7 @@ import { Building2, ArrowRight, Loader2 } from 'lucide-react';
 import { Entity } from '@/lib/types/sales';
 import toast from 'react-hot-toast';
 
-const ENTITIES: Entity[] = ['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China'];
+const ENTITIES: Entity[] = ['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania'];
 
 const ENTITY_DISPLAY_NAMES: Record<Entity, string> = {
   HQ: 'HQ',
@@ -19,6 +19,9 @@ const ENTITY_DISPLAY_NAMES: Record<Entity, string> = {
   Korot: 'Korot',
   Japan: 'Japan',
   China: 'China',
+  India: 'India',
+  Mexico: 'Mexico',
+  Oceania: 'Oceania',
   All: 'All',
 };
 

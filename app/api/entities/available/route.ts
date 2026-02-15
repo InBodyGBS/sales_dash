@@ -27,13 +27,13 @@ export async function GET() {
         
         console.log(`✅ Found ${rpcEntities.length} entities with data (RPC):`, rpcEntities);
         
-        // Check if we have all expected entities (at least 8: HQ, USA, BWA, Vietnam, Healthcare, Korot, Japan, China)
+        // Check if we have all expected entities (at least 11: HQ, USA, BWA, Vietnam, Healthcare, Korot, Japan, China, India, Mexico, Oceania)
         // If RPC returns less than expected, use fallback to be safe
-        const expectedEntities = ['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China'];
+        const expectedEntities = ['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania'];
         const hasAllExpected = expectedEntities.every(e => rpcEntities.includes(e));
         
-        // Always use fallback if China is missing, even if RPC returns 7 entities
-        if (hasAllExpected && rpcEntities.length >= 8) {
+        // Always use fallback if China is missing, even if RPC returns 10 entities
+        if (hasAllExpected && rpcEntities.length >= 11) {
           // RPC has all expected entities including China, use it
           console.log(`✅ RPC has all ${rpcEntities.length} expected entities including China`);
           return NextResponse.json({ entities: rpcEntities.sort() });
@@ -89,8 +89,8 @@ export async function GET() {
         hasMore = data.length === PAGE_SIZE;
         page++;
         
-        // If we already have all expected entities (8 entities), we can stop early
-        if (entitySet.size >= 8) {
+        // If we already have all expected entities (11 entities), we can stop early
+        if (entitySet.size >= 11) {
           hasMore = false;
         }
       } else {

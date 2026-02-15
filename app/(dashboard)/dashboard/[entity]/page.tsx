@@ -27,6 +27,9 @@ const ENTITY_DISPLAY_NAMES: Record<Entity, string> = {
   Korot: 'Korot',
   Japan: 'Japan',
   China: 'China',
+  India: 'India',
+  Mexico: 'Mexico',
+  Oceania: 'Oceania',
   All: 'All',
 };
 
@@ -48,25 +51,50 @@ export default function EntityDashboardPage() {
   const [channelSales, setChannelSales] = useState<any[]>([]);
   const [topProducts, setTopProducts] = useState<any>(null);
   const [industryBreakdown, setIndustryBreakdown] = useState<any[]>([]);
+  const [availableEntities, setAvailableEntities] = useState<Entity[]>([]);
 
-  // Validate entity
-  const validEntities: Entity[] = ['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China'];
-  const isValidEntity = validEntities.includes(entity);
+  // Validate entity dynamically based on available entities from API
+  const isValidEntity = availableEntities.length === 0 || availableEntities.includes(entity);
 
   useEffect(() => {
+    // First, fetch available entities to validate
+    fetchAvailableEntities();
+  }, []);
+
+  useEffect(() => {
+    // Wait for available entities to be loaded
+    if (availableEntities.length === 0) return;
+    
     if (!isValidEntity) {
       toast.error('Invalid entity selected');
       router.push('/dashboard');
       return;
     }
     fetchYears();
-  }, [entity, isValidEntity, router]);
+  }, [entity, isValidEntity, router, availableEntities]);
 
   useEffect(() => {
     if (year && isValidEntity) {
       fetchAllData();
     }
   }, [year, entity, quarter, countries, fg, isValidEntity]);
+
+  const fetchAvailableEntities = async () => {
+    try {
+      const res = await fetch('/api/entities/available');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.entities && Array.isArray(data.entities)) {
+          setAvailableEntities(data.entities as Entity[]);
+          console.log(`✅ Available entities loaded:`, data.entities);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch available entities:', error);
+      // If API fails, allow all entities (fallback)
+      setAvailableEntities(['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania']);
+    }
+  };
 
   const fetchYears = async () => {
     try {
@@ -159,8 +187,8 @@ export default function EntityDashboardPage() {
         transactions: 0, // RPC에서 제공하지 않음
       })));
       
-      // FG distribution (only for Japan, China, Healthcare)
-      const entitiesWithFG = ['Japan', 'China', 'Healthcare'];
+      // FG distribution (only for Japan, China, Healthcare, India, Mexico, Oceania)
+      const entitiesWithFG = ['Japan', 'China', 'Healthcare', 'India', 'Mexico', 'Oceania'];
       if (entitiesWithFG.includes(entityParam)) {
         // Fetch FG distribution data from API
         try {
@@ -265,7 +293,7 @@ export default function EntityDashboardPage() {
           <KPICards data={kpiData} loading={loading} entity={entity} />
 
           {/* Time Trend Section */}
-          {/* Only Japan, China, and Healthcare show FG Distribution */}
+          {/* Only Japan, China, Healthcare, India, Mexico, Oceania show FG Distribution */}
           {entity === 'Korot' || entity === 'BWA' || entity === 'Vietnam' || entity === 'HQ' || entity === 'USA' ? (
             <>
               {/* Monthly Trend - Full Width for USA, HQ, Vietnam, Korot, BWA */}
@@ -285,7 +313,7 @@ export default function EntityDashboardPage() {
             </>
           ) : (
             <>
-              {/* Japan, China, Healthcare: Show FG Distribution */}
+              {/* Japan, China, Healthcare, India, Mexico, Oceania: Show FG Distribution */}
               <div className="grid gap-6 md:grid-cols-2">
                 <MonthlyTrendChart data={monthlyTrend} loading={loading} entity={entity} currentYear={parseInt(year)} />
                 <QuarterlyComparisonChart

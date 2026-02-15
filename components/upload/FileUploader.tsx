@@ -46,8 +46,8 @@ export function FileUploader({ entity, onUploadSuccess }: FileUploaderProps) {
     const file = acceptedFiles[0];
     setUploadedFile(file);
     
-    // For Japan and China, show mapping dialog first
-    if (entity === 'Japan' || entity === 'China') {
+    // For Japan, China, India, Mexico, Oceania, show mapping dialog first
+    if (entity === 'Japan' || entity === 'China' || entity === 'India' || entity === 'Mexico' || entity === 'Oceania') {
       setShowMappingDialog(true);
       return;
     }

@@ -29,7 +29,7 @@ interface ItemMapping {
   is_active: boolean;
 }
 
-const ENTITIES_REQUIRING_MAPPING: Entity[] = ['Japan', 'China'];
+const ENTITIES_REQUIRING_MAPPING: Entity[] = ['Japan', 'China', 'India', 'Mexico', 'Oceania'];
 
 export default function ItemMappingPage() {
   const [useMaster, setUseMaster] = useState(true); // Use item_master by default
@@ -578,7 +578,7 @@ export default function ItemMappingPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="master">Master (모든 Entity 공통)</SelectItem>
-                  <SelectItem value="entity">Entity별 (Japan, China)</SelectItem>
+                  <SelectItem value="entity">Entity별 (Japan, China, India, Mexico, Oceania)</SelectItem>
                 </SelectContent>
               </Select>
             </div>

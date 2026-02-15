@@ -176,6 +176,9 @@ export default function UploadPage() {
                 <SelectItem value="Korot">Korot</SelectItem>
                 <SelectItem value="Japan">Japan</SelectItem>
                 <SelectItem value="China">China</SelectItem>
+                <SelectItem value="India">India</SelectItem>
+                <SelectItem value="Mexico">Mexico</SelectItem>
+                <SelectItem value="Oceania">Oceania</SelectItem>
               </SelectContent>
             </Select>
           </div>
