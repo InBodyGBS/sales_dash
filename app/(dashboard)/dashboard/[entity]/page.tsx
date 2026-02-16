@@ -18,7 +18,7 @@ import { ArrowLeft } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { getDashboardData, transformMonthlyTrend, transformQuarterly, transformTopProducts } from '@/lib/dashboard';
 
-const ENTITY_DISPLAY_NAMES: Record<Entity, string> = {
+const ENTITY_DISPLAY_NAMES = {
   HQ: 'HQ',
   USA: 'USA',
   BWA: 'BWA',
@@ -30,8 +30,13 @@ const ENTITY_DISPLAY_NAMES: Record<Entity, string> = {
   India: 'India',
   Mexico: 'Mexico',
   Oceania: 'Oceania',
+  Netherlands: 'Netherlands',
+  Germany: 'Germany',
+  UK: 'UK',
+  Asia: 'Asia',
+  Europe: 'Europe',
   All: 'All',
-};
+} as const;
 
 export default function EntityDashboardPage() {
   const params = useParams();
