@@ -1,6 +1,6 @@
 # Sales Dashboard
 
-InBody의 글로벌 자회사(HQ, USA, BWA, Vietnam, Healthcare, Korot)의 매출 데이터를 통합하여 시각화하고 분석하는 웹 기반 대시보드입니다.
+InBody의 글로벌 16개 법인(HQ, USA, BWA, Vietnam, Healthcare, Korot, Japan, China, India, Mexico, Oceania, Netherlands, Germany, UK, Asia, Europe)의 매출 데이터를 통합하여 시각화하고 분석하는 웹 기반 대시보드입니다.
 
 ## 기술 스택
 
@@ -13,11 +13,22 @@ InBody의 글로벌 자회사(HQ, USA, BWA, Vietnam, Healthcare, Korot)의 매�
 
 ## 주요 기능
 
-- 📊 엑셀 파일 기반 데이터 업로드
-- 🔍 다차원 필터링 (Entity, Year, Category, Region, Currency)
-- 📈 다양한 차트 시각화 (카테고리, 제품, 지역, 트렌드)
-- 📋 분기별 매출 데이터 그리드
-- 💾 CSV 내보내기 기능
+### 데이터 관리
+- 📊 **엑셀 파일 업로드**: 드래그 앤 드롭으로 간편한 데이터 업로드
+- 🔧 **Column Mapping**: Entity별 컬럼 매핑 저장 및 관리 (Japan 방식)
+- 🗺️ **Item Mapping**: 제품별 FG 분류, 카테고리, 모델 매핑
+- 💱 **Exchange Rate**: 환율 데이터 관리 및 자동 적용
+
+### 대시보드
+- 📈 **Individual Entity Dashboard**: 각 법인별 상세 매출 분석
+- 🌐 **InBody Group Dashboard**: 전체 법인 통합 분석 (KRW 기준)
+- 🔍 **다차원 필터링**: Entity, Year, Quarter, FG Classification, Category
+- 📊 **다양한 차트**: 월별 트렌드, 분기 비교, Top 10 제품, 산업별 분석, FG 분포 등
+
+### 기타
+- 🔄 **실시간 동기화**: Materialized View를 통한 빠른 데이터 조회
+- 💾 **CSV 내보내기**: 분석 결과 다운로드
+- 🌍 **다중 통화 지원**: KRW, USD, JPY, CNH, MXN, INR, AUD, VND, EUR, GBP, MYR, SGD
 
 ## 시작하기
 
@@ -66,7 +77,7 @@ CREATE TABLE sales_data (
     quantity INTEGER NOT NULL,
     upload_batch_id UUID,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    CONSTRAINT valid_entity CHECK (entity IN ('HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot')),
+    CONSTRAINT valid_entity CHECK (entity IN ('HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe')),
     CONSTRAINT valid_quarter CHECK (quarter IN ('Q1', 'Q2', 'Q3', 'Q4')),
     CONSTRAINT positive_amount CHECK (sales_amount >= 0),
     CONSTRAINT positive_quantity CHECK (quantity >= 0)
@@ -109,41 +120,100 @@ sales-dashboard/
 ├── app/
 │   ├── (dashboard)/
 │   │   ├── dashboard/
+│   │   │   ├── [entity]/         # Individual Entity Dashboard
+│   │   │   │   └── page.tsx
+│   │   │   ├── group/            # InBody Group Dashboard
+│   │   │   │   └── page.tsx
+│   │   │   └── page.tsx          # Dashboard Selection
+│   │   ├── upload/               # File Upload
 │   │   │   └── page.tsx
-│   │   ├── upload/
+│   │   ├── master-mapping/       # Item Mapping & Exchange Rate
 │   │   │   └── page.tsx
 │   │   └── layout.tsx
 │   ├── api/
-│   │   ├── upload/
+│   │   ├── upload/               # Upload Processing
+│   │   ├── dashboard/            # Dashboard APIs
+│   │   │   ├── inbody-group/    # Group Dashboard APIs
+│   │   │   └── [other APIs]
 │   │   ├── entities/
-│   │   ├── years/
-│   │   ├── sales/
-│   │   └── export/
+│   │   ├── exchange-rate/
+│   │   └── item-mapping/
 │   ├── layout.tsx
-│   └── page.tsx
+│   └── page.tsx                  # Landing Page
 ├── components/
-│   ├── ui/
-│   ├── charts/
-│   ├── dashboard/
-│   └── upload/
+│   ├── ui/                       # shadcn/ui components
+│   ├── charts/                   # Recharts components
+│   ├── dashboard/                # Dashboard components
+│   └── upload/                   # Upload components
 ├── lib/
-│   ├── supabase/
-│   ├── utils/
-│   └── types/
+│   ├── supabase/                 # Supabase client
+│   ├── utils/                    # Utility functions
+│   └── types/                    # TypeScript types
+├── database/                     # SQL scripts
+│   ├── create-inbody-group-functions.sql
+│   ├── create-dashboard-functions.sql
+│   └── add-new-entities-2026.sql
 └── public/
 ```
 
 ## 엑셀 파일 형식
 
-업로드할 엑셀 파일은 다음 컬럼을 포함해야 합니다:
+### 업로드 방식
 
-- **Date** (필수): 날짜 (YYYY-MM-DD 형식 또는 Excel Date)
-- **Product** (필수): 제품명
-- **Currency** (필수): 통화 (KRW, USD, VND 등)
-- **Sales Amount** (필수): 매출액 (숫자)
-- **Quantity** (필수): 수량 (정수)
-- **Category** (선택): 제품 카테고리
-- **Region** (선택): 판매 지역
+1. **고정 매핑 방식** (HQ, USA, BWA, Vietnam, Healthcare, Korot)
+   - 사전 정의된 컬럼 매핑 사용
+   - 표준 Excel 템플릿 필요
+
+2. **동적 매핑 방식** (Japan, China, India, Mexico, Oceania, Netherlands, Germany, UK, Asia, Europe)
+   - 업로드 시 컬럼 매핑 설정
+   - Entity별 독립적인 매핑 저장
+   - 유연한 Excel 형식 지원
+
+### 필수 컬럼 (매핑 필요)
+
+- **Invoice Date**: 송장 날짜
+- **Product / Item Number**: 제품명 또는 품목 번호
+- **Quantity**: 수량
+- **Line Amount_MST**: 금액 (Master Currency 기준)
+- **Currency**: 통화 코드 (KRW, USD, EUR 등)
+
+### 선택 컬럼
+
+- **Category**: 제품 카테고리
+- **FG Classification**: FG/NonFG 분류
+- **Customer Name**: 고객명
+- **Invoice**: 송장 번호
+- **Group**: 그룹 정보
+- 기타 필요한 모든 컬럼
+
+## 새로운 Entity 추가
+
+새로운 법인을 추가하려면 다음 단계를 따르세요:
+
+1. **TypeScript 타입 업데이트** (`lib/types/sales.ts`)
+   ```typescript
+   export type Entity = 'HQ' | 'USA' | ... | 'NewEntity';
+   ```
+
+2. **데이터베이스 제약 조건 업데이트**
+   - `sales_data`, `item_mapping`, `column_mapping` 테이블의 CHECK 제약 조건
+   - `database/add-new-entities-2026.sql` 참고
+
+3. **통화 및 환율 설정**
+   - `entity_currency` 테이블에 법인별 통화 매핑
+   - `exchange_rate` 테이블에 환율 데이터
+
+4. **프론트엔드 업데이트**
+   - Upload 페이지의 entity 드롭다운
+   - Dashboard의 ENTITIES 배열
+   - Master Mapping 페이지의 entity 리스트
+
+5. **Materialized View Refresh**
+   ```sql
+   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_sales_cube;
+   ```
+
+상세한 가이드는 `database/README-new-entities-2026.md`를 참조하세요.
 
 ## 배포
 
@@ -154,6 +224,25 @@ sales-dashboard/
 3. 자동 배포 완료
 
 자세한 내용은 [Vercel 문서](https://vercel.com/docs)를 참조하세요.
+
+## 데이터베이스 함수
+
+### InBody Group Dashboard 함수
+- `get_inbody_group_summary`: 전체 요약 통계 (KRW 기준)
+- `get_inbody_group_monthly_trend`: 월별 트렌드
+- `get_inbody_group_quarterly`: 분기별 비교
+- `get_inbody_group_entity_sales`: 법인별 매출
+- `get_inbody_group_top_products`: Top 10 제품
+- `get_inbody_group_industry`: 산업별 분석
+- `get_inbody_group_fg_distribution`: FG 분포
+
+### Individual Entity Dashboard 함수
+- `get_dashboard_summary`: Entity별 요약 통계
+- `get_monthly_trend`: 월별 트렌드
+- `get_quarterly_comparison`: 분기별 비교
+- `get_channel_sales`: 채널별 매출
+
+모든 SQL 함수는 `database/` 폴더에 정의되어 있습니다.
 
 ## 라이선스
 

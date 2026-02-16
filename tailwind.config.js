@@ -50,6 +50,15 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // InBody Brand Colors
+        inbody: {
+          red: '#971B2F',
+          'light-gray': '#B2B4B8',
+          'cool-gray': '#677B7F',
+          'dark-gray': '#4B4F5A',
+          black: '#101820',
+          'ice-gray': '#A2B2C8',
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

@@ -102,7 +102,7 @@ export default function DashboardPage() {
     return (
       <div className="container mx-auto py-8">
         <div className="flex items-center justify-center min-h-[400px]">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <Loader2 className="h-8 w-8 animate-spin text-inbody-red" />
         </div>
       </div>
     );
@@ -113,8 +113,8 @@ export default function DashboardPage() {
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold mb-4">Sales Dashboard</h1>
-          <p className="text-muted-foreground text-lg">
+          <h1 className="text-4xl font-bold mb-4 text-inbody-black">Sales Dashboard</h1>
+          <p className="text-inbody-cool-gray text-lg">
             Select an entity to view its sales dashboard
           </p>
         </div>
@@ -122,22 +122,21 @@ export default function DashboardPage() {
         {/* InBody Group Dashboard Card */}
         <div className="mb-8">
           <Card
-            className="p-6 cursor-pointer transition-all hover:shadow-lg hover:border-primary"
+            className="p-6 cursor-pointer transition-all hover:shadow-xl border-2 border-inbody-red/20 hover:border-inbody-red bg-gradient-to-br from-white to-inbody-red/5"
             onClick={() => router.push('/dashboard/group')}
           >
             <div className="flex flex-col items-center text-center space-y-4">
-              <div className="p-4 rounded-full bg-primary/10">
-                <Building2 className="h-8 w-8 text-primary" />
+              <div className="p-4 rounded-full bg-inbody-red/10">
+                <Building2 className="h-10 w-10 text-inbody-red" />
               </div>
               <div>
-                <h3 className="text-xl font-semibold mb-1">InBody Group</h3>
-                <p className="text-sm text-muted-foreground">
+                <h3 className="text-2xl font-bold mb-1 text-inbody-black">InBody Group</h3>
+                <p className="text-sm text-inbody-cool-gray">
                   View all entities combined
                 </p>
               </div>
               <Button
-                variant="outline"
-                className="w-full"
+                className="w-full bg-inbody-red hover:bg-inbody-red/90 text-white"
                 onClick={(e) => {
                   e.stopPropagation();
                   router.push('/dashboard/group');
@@ -157,31 +156,31 @@ export default function DashboardPage() {
             return (
               <Card
                 key={entity}
-                className={`p-6 cursor-pointer transition-all hover:shadow-lg ${
+                className={`p-6 cursor-pointer transition-all ${
                   hasData
-                    ? 'hover:border-primary'
-                    : 'opacity-60 cursor-not-allowed'
+                    ? 'hover:shadow-xl hover:border-inbody-red/50 hover:-translate-y-1 border-inbody-light-gray/30 bg-white'
+                    : 'opacity-50 cursor-not-allowed bg-gray-50 border-inbody-light-gray/20'
                 }`}
                 onClick={() => hasData && handleEntitySelect(entity)}
               >
                 <div className="flex flex-col items-center text-center space-y-4">
                   <div
                     className={`p-4 rounded-full ${
-                      hasData ? 'bg-primary/10' : 'bg-muted'
+                      hasData ? 'bg-inbody-red/10' : 'bg-inbody-light-gray/20'
                     }`}
                   >
                     <Building2
                       className={`h-8 w-8 ${
-                        hasData ? 'text-primary' : 'text-muted-foreground'
+                        hasData ? 'text-inbody-red' : 'text-inbody-cool-gray'
                       }`}
                     />
                   </div>
                   <div>
-                    <h3 className="text-xl font-semibold mb-1">
+                    <h3 className={`text-xl font-semibold mb-1 ${hasData ? 'text-inbody-black' : 'text-inbody-cool-gray'}`}>
                       {ENTITY_DISPLAY_NAMES[entity]}
                     </h3>
                     {!hasData && (
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-inbody-cool-gray">
                         No data available
                       </p>
                     )}
@@ -189,7 +188,7 @@ export default function DashboardPage() {
                   {hasData && (
                     <Button
                       variant="outline"
-                      className="w-full"
+                      className="w-full border-inbody-red text-inbody-red hover:bg-inbody-red hover:text-white"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleEntitySelect(entity);
@@ -207,8 +206,8 @@ export default function DashboardPage() {
 
         {availableEntities.length === 0 && (
           <div className="mt-12 text-center">
-            <Card className="p-8">
-              <p className="text-muted-foreground">
+            <Card className="p-8 border-inbody-light-gray/30 bg-white">
+              <p className="text-inbody-cool-gray">
                 No sales data available. Please upload data first.
               </p>
             </Card>
