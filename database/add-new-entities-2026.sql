@@ -57,12 +57,54 @@ INSERT INTO exchange_rate (year, currency, rate) VALUES
 (2026, 'SGD', 950)
 ON CONFLICT (year, currency) DO UPDATE SET rate = EXCLUDED.rate;
 
--- 3. Column Mapping 복사 (Japan 방식)
+-- 3. Sales Data, Column Mapping, Item Mapping 제약 조건 업데이트
 -- 주의: 이 스크립트는 초기 설정용입니다.
 -- 실행 후에는 각 entity의 매핑을 독립적으로 관리하세요.
 -- 이 스크립트를 다시 실행하면 기존 커스텀 매핑이 모두 삭제되고 Japan 매핑으로 덮어씌워집니다!
 
--- 3-1. column_mapping 테이블 제약 조건 업데이트
+-- 3-1. sales_data 테이블 CHECK 제약 조건 업데이트 (새 entity 허용)
+DO $$ 
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'valid_entity'
+          AND conrelid = 'sales_data'::regclass
+    ) THEN
+        -- 기존 CHECK 제약 조건 삭제
+        ALTER TABLE sales_data DROP CONSTRAINT valid_entity;
+        RAISE NOTICE '✅ sales_data: 기존 CHECK 제약 조건이 삭제되었습니다.';
+    END IF;
+    
+    -- 새 CHECK 제약 조건 추가 (새 entity 포함)
+    ALTER TABLE sales_data 
+    ADD CONSTRAINT valid_entity 
+    CHECK (entity IN ('HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe'));
+    
+    RAISE NOTICE '✅ sales_data: 새 CHECK 제약 조건이 추가되었습니다 (새 entity 포함).';
+END $$;
+
+-- 3-2. item_mapping 테이블 CHECK 제약 조건 업데이트 (새 entity 허용)
+DO $$ 
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'valid_entity_item_mapping'
+          AND conrelid = 'item_mapping'::regclass
+    ) THEN
+        -- 기존 CHECK 제약 조건 삭제
+        ALTER TABLE item_mapping DROP CONSTRAINT valid_entity_item_mapping;
+        RAISE NOTICE '✅ item_mapping: 기존 CHECK 제약 조건이 삭제되었습니다.';
+    END IF;
+    
+    -- 새 CHECK 제약 조건 추가 (새 entity 포함)
+    ALTER TABLE item_mapping 
+    ADD CONSTRAINT valid_entity_item_mapping 
+    CHECK (entity IN ('HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe'));
+    
+    RAISE NOTICE '✅ item_mapping: 새 CHECK 제약 조건이 추가되었습니다 (새 entity 포함).';
+END $$;
+
+-- 3-3. column_mapping 테이블 제약 조건 업데이트
 DO $$ 
 BEGIN
     -- Step 1: CHECK 제약 조건 업데이트 (새 entity 허용)
@@ -110,12 +152,12 @@ BEGIN
     END IF;
 END $$;
 
--- 3-2. 기존 매핑 삭제 (새로 추가할 entity들만)
+-- 4. 기존 매핑 삭제 (새로 추가할 entity들만)
 -- ⚠️ 주의: 이미 커스터마이징한 매핑이 있다면 삭제됩니다!
 DELETE FROM column_mapping 
 WHERE entity IN ('Netherlands', 'Germany', 'UK', 'Asia', 'Europe');
 
--- 3-3. Japan 매핑을 복사하여 초기 매핑 생성
+-- 5. Japan 매핑을 복사하여 초기 매핑 생성
 -- 각 entity는 이후 독립적으로 관리됩니다.
 
 -- Netherlands
@@ -153,7 +195,7 @@ FROM column_mapping
 WHERE entity = 'Japan'
   AND is_active = true;
 
--- 4. 결과 확인
+-- 6. 결과 확인
 SELECT entity, COUNT(*) as mapping_count
 FROM column_mapping
 WHERE entity IN ('Netherlands', 'Germany', 'UK', 'Asia', 'Europe')
@@ -161,13 +203,13 @@ WHERE entity IN ('Netherlands', 'Germany', 'UK', 'Asia', 'Europe')
 GROUP BY entity
 ORDER BY entity;
 
--- 5. Entity Currency 확인
+-- 7. Entity Currency 확인
 SELECT * FROM entity_currency
 WHERE entity IN ('Netherlands', 'Germany', 'UK', 'Asia', 'Europe')
 ORDER BY entity;
 
--- 6. Exchange Rate 확인
+-- 8. Exchange Rate 확인
 SELECT * FROM exchange_rate
-WHERE currency IN ('EUR', 'GBP')
+WHERE currency IN ('EUR', 'GBP', 'MYR', 'SGD')
 ORDER BY year, currency;
 

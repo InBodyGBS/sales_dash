@@ -33,6 +33,7 @@ export default function UploadPage() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [expandedErrors, setExpandedErrors] = useState<Set<string>>(new Set());
+  const [showAllHistory, setShowAllHistory] = useState(false);
   const [errorDialog, setErrorDialog] = useState<{
     open: boolean;
     title: string;
@@ -207,7 +208,7 @@ export default function UploadPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {uploadHistory.map((upload) => {
+                  {(showAllHistory ? uploadHistory : uploadHistory.slice(0, 5)).map((upload) => {
                     const isErrorExpanded = expandedErrors.has(upload.id);
                     const isSkipMessage = upload.error_message?.includes('Skip') || upload.error_message?.includes('skip');
                     const hasError = upload.error_message && !isSkipMessage;
@@ -300,6 +301,29 @@ export default function UploadPage() {
                       </div>
                     );
                   })}
+                  
+                  {/* Show More/Less Button */}
+                  {uploadHistory.length > 5 && (
+                    <div className="pt-2 text-center">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowAllHistory(!showAllHistory)}
+                      >
+                        {showAllHistory ? (
+                          <>
+                            <ChevronUp className="h-4 w-4 mr-2" />
+                            Show Less
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="h-4 w-4 mr-2" />
+                            Show More ({uploadHistory.length - 5} more)
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
