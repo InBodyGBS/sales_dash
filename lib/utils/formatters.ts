@@ -47,6 +47,33 @@ export function formatCNH(amount: number): string {
   }).format(amount);
 }
 
+export function formatMXN(amount: number): string {
+  return new Intl.NumberFormat('es-MX', {
+    style: 'currency',
+    currency: 'MXN',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
+export function formatINR(amount: number): string {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
+export function formatAUD(amount: number): string {
+  return new Intl.NumberFormat('en-AU', {
+    style: 'currency',
+    currency: 'AUD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
 // Compact formatters for Y-axis (M unit only, no K unit)
 export function formatCompactCurrency(amount: number, currency: string = 'USD'): string {
   // Always use M unit, no K unit
@@ -69,6 +96,21 @@ export function formatCompactJPY(amount: number): string {
 }
 
 export function formatCompactCNH(amount: number): string {
+  // Always use M unit, no K unit
+  return `${(amount / 1000000).toFixed(1)}M`;
+}
+
+export function formatCompactMXN(amount: number): string {
+  // Always use M unit, no K unit
+  return `${(amount / 1000000).toFixed(1)}M`;
+}
+
+export function formatCompactINR(amount: number): string {
+  // Always use M unit, no K unit
+  return `${(amount / 1000000).toFixed(1)}M`;
+}
+
+export function formatCompactAUD(amount: number): string {
   // Always use M unit, no K unit
   return `${(amount / 1000000).toFixed(1)}M`;
 }

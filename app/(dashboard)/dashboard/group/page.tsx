@@ -11,7 +11,7 @@ import { EntitySalesChart } from '@/components/charts/EntitySalesChart';
 import { CountrySalesChart } from '@/components/charts/CountrySalesChart';
 import { TopProductsChart } from '@/components/charts/TopProductsChart';
 import { IndustryBreakdownChart } from '@/components/charts/IndustryBreakdownChart';
-import { SalesDataTable } from '@/components/dashboard/SalesDataTable';
+// import { SalesDataTable } from '@/components/dashboard/SalesDataTable';
 import { Entity } from '@/lib/types/sales';
 import toast from 'react-hot-toast';
 import { Button } from '@/components/ui/button';
@@ -250,15 +250,15 @@ export default function InBodyGroupDashboardPage() {
           {/* Industry Analysis Section */}
           <IndustryBreakdownChart data={industryBreakdown} loading={loading} />
 
-          {/* Data Table Section */}
-          <SalesDataTable
+          {/* Data Table Section - Hidden */}
+          {/* <SalesDataTable
             year={year}
             entities={entities}
             quarter={quarter}
             countries={countries}
             fg={fg}
             loading={loading}
-          />
+          /> */}
         </div>
       </div>
     </div>

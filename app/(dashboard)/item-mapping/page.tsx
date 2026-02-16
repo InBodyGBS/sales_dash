@@ -578,7 +578,7 @@ export default function ItemMappingPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="master">Master (모든 Entity 공통)</SelectItem>
-                  <SelectItem value="entity">Entity별 (Japan, China, India, Mexico, Oceania)</SelectItem>
+                  <SelectItem value="entity">Entity별 (D365 이외 법인)</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DollarSign, Package, TrendingUp, FileText, ArrowUp, ArrowDown } from 'lucide-react';
-import { formatCurrency, formatNumber, formatKRW, formatVND, formatJPY, formatCNH } from '@/lib/utils/formatters';
+import { formatCurrency, formatNumber, formatKRW, formatVND, formatJPY, formatCNH, formatMXN, formatINR, formatAUD } from '@/lib/utils/formatters';
 import { Entity } from '@/lib/types/sales';
 
 interface KPICardsProps {
@@ -27,6 +27,9 @@ export function KPICards({ data, loading, entity }: KPICardsProps) {
   const isVNDEntity = entity === 'Vietnam';
   const isJPYEntity = entity === 'Japan';
   const isCNHEntity = entity === 'China';
+  const isMXNEntity = entity === 'Mexico';
+  const isINREntity = entity === 'India';
+  const isAUDEntity = entity === 'Oceania';
   
   if (loading) {
     return (
@@ -163,6 +166,96 @@ export function KPICards({ data, loading, entity }: KPICardsProps) {
               <span>{Math.abs(data.comparison.amount).toFixed(1)}% vs previous period</span>
             </div>
             <p className="text-xs text-muted-foreground mt-1">Total sales amount (CNH)</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // For Mexico: show Total Amount with MXN format
+  if (isMXNEntity) {
+    return (
+      <div className="grid gap-4 md:grid-cols-1">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Amount</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatMXN(data.totalAmount)}</div>
+            {data.prevTotalAmount !== undefined && data.prevTotalAmount > 0 && (
+              <div className="text-sm text-muted-foreground mt-1">
+                Previous year: {formatMXN(data.prevTotalAmount)}
+              </div>
+            )}
+            <div className={`flex items-center text-xs mt-1 ${data.comparison.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {data.comparison.amount >= 0 ? (
+                <ArrowUp className="h-3 w-3 mr-1" />
+              ) : (
+                <ArrowDown className="h-3 w-3 mr-1" />
+              )}
+              <span>{Math.abs(data.comparison.amount).toFixed(1)}% vs previous period</span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Total sales amount (MXN)</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // For India: show Total Amount with INR format
+  if (isINREntity) {
+    return (
+      <div className="grid gap-4 md:grid-cols-1">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Amount</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatINR(data.totalAmount)}</div>
+            {data.prevTotalAmount !== undefined && data.prevTotalAmount > 0 && (
+              <div className="text-sm text-muted-foreground mt-1">
+                Previous year: {formatINR(data.prevTotalAmount)}
+              </div>
+            )}
+            <div className={`flex items-center text-xs mt-1 ${data.comparison.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {data.comparison.amount >= 0 ? (
+                <ArrowUp className="h-3 w-3 mr-1" />
+              ) : (
+                <ArrowDown className="h-3 w-3 mr-1" />
+              )}
+              <span>{Math.abs(data.comparison.amount).toFixed(1)}% vs previous period</span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Total sales amount (INR)</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // For Oceania: show Total Amount with AUD format
+  if (isAUDEntity) {
+    return (
+      <div className="grid gap-4 md:grid-cols-1">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Amount</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatAUD(data.totalAmount)}</div>
+            {data.prevTotalAmount !== undefined && data.prevTotalAmount > 0 && (
+              <div className="text-sm text-muted-foreground mt-1">
+                Previous year: {formatAUD(data.prevTotalAmount)}
+              </div>
+            )}
+            <div className={`flex items-center text-xs mt-1 ${data.comparison.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {data.comparison.amount >= 0 ? (
+                <ArrowUp className="h-3 w-3 mr-1" />
+              ) : (
+                <ArrowDown className="h-3 w-3 mr-1" />
+              )}
+              <span>{Math.abs(data.comparison.amount).toFixed(1)}% vs previous period</span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Total sales amount (AUD)</p>
           </CardContent>
         </Card>
       </div>

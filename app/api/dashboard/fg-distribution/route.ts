@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
         
         let query = supabase
           .from('mv_sales_cube')
-          .select('fg_classification, line_amount_mst')
+          .select('fg_classification, total_amount')
           .eq('year', yearInt);
 
         if (entities.length > 0 && !entities.includes('All')) {
@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
 
     data.forEach((row) => {
       const fg = normalizeFG(row.fg_classification);
-      const amount = Number(row.line_amount_mst || 0);
+      const amount = Number(row.total_amount || 0);
       
       fgMap.set(fg, (fgMap.get(fg) || 0) + (isNaN(amount) ? 0 : amount));
     });

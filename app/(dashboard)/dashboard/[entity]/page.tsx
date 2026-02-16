@@ -10,7 +10,7 @@ import { FGDistributionChart } from '@/components/charts/FGDistributionChart';
 import { ChannelSalesChart } from '@/components/charts/ChannelSalesChart';
 import { TopProductsChart } from '@/components/charts/TopProductsChart';
 import { IndustryBreakdownChart } from '@/components/charts/IndustryBreakdownChart';
-import { SalesDataTable } from '@/components/dashboard/SalesDataTable';
+// import { SalesDataTable } from '@/components/dashboard/SalesDataTable';
 import { Entity } from '@/lib/types/sales';
 import toast from 'react-hot-toast';
 import { Button } from '@/components/ui/button';
@@ -187,8 +187,8 @@ export default function EntityDashboardPage() {
         transactions: 0, // RPC에서 제공하지 않음
       })));
       
-      // FG distribution (only for Japan, China, Healthcare, India, Mexico, Oceania)
-      const entitiesWithFG = ['Japan', 'China', 'Healthcare', 'India', 'Mexico', 'Oceania'];
+      // FG distribution (only for Healthcare)
+      const entitiesWithFG = ['Healthcare'];
       if (entitiesWithFG.includes(entityParam)) {
         // Fetch FG distribution data from API
         try {
@@ -293,27 +293,10 @@ export default function EntityDashboardPage() {
           <KPICards data={kpiData} loading={loading} entity={entity} />
 
           {/* Time Trend Section */}
-          {/* Only Japan, China, Healthcare, India, Mexico, Oceania show FG Distribution */}
-          {entity === 'Korot' || entity === 'BWA' || entity === 'Vietnam' || entity === 'HQ' || entity === 'USA' ? (
+          {/* Only Healthcare shows FG Distribution */}
+          {entity === 'Healthcare' ? (
             <>
-              {/* Monthly Trend - Full Width for USA, HQ, Vietnam, Korot, BWA */}
-              <div className="grid gap-6 md:grid-cols-1">
-                <MonthlyTrendChart data={monthlyTrend} loading={loading} entity={entity} currentYear={parseInt(year)} />
-              </div>
-              {/* Quarterly Comparison and Channel Sales */}
-              <div className="grid gap-6 md:grid-cols-2">
-                <QuarterlyComparisonChart
-                  data={quarterlyComparison}
-                  currentYear={parseInt(year)}
-                  loading={loading}
-                  entity={entity}
-                />
-                <ChannelSalesChart data={channelSales} loading={loading} entity={entity} />
-              </div>
-            </>
-          ) : (
-            <>
-              {/* Japan, China, Healthcare, India, Mexico, Oceania: Show FG Distribution */}
+              {/* Healthcare: Show FG Distribution */}
               <div className="grid gap-6 md:grid-cols-2">
                 <MonthlyTrendChart data={monthlyTrend} loading={loading} entity={entity} currentYear={parseInt(year)} />
                 <QuarterlyComparisonChart
@@ -330,6 +313,24 @@ export default function EntityDashboardPage() {
                 <ChannelSalesChart data={channelSales} loading={loading} entity={entity} />
               </div>
             </>
+          ) : (
+            <>
+              {/* USA, HQ, Vietnam, Korot, BWA, Japan, China, Mexico, India, Oceania: USA Style Layout */}
+              {/* Monthly Trend - Full Width */}
+              <div className="grid gap-6 md:grid-cols-1">
+                <MonthlyTrendChart data={monthlyTrend} loading={loading} entity={entity} currentYear={parseInt(year)} />
+              </div>
+              {/* Quarterly Comparison and Channel Sales */}
+              <div className="grid gap-6 md:grid-cols-2">
+                <QuarterlyComparisonChart
+                  data={quarterlyComparison}
+                  currentYear={parseInt(year)}
+                  loading={loading}
+                  entity={entity}
+                />
+                <ChannelSalesChart data={channelSales} loading={loading} entity={entity} />
+              </div>
+            </>
           )}
           
           {/* Top Products Section */}
@@ -338,15 +339,15 @@ export default function EntityDashboardPage() {
           {/* Industry Analysis Section */}
           <IndustryBreakdownChart data={industryBreakdown} loading={loading} entity={entity} />
 
-          {/* Data Table Section */}
-          <SalesDataTable
+          {/* Data Table Section - Hidden */}
+          {/* <SalesDataTable
             year={year}
             entities={[entity]} // Fixed to current entity
             quarter={quarter}
             countries={countries}
             fg={fg}
             loading={loading}
-          />
+          /> */}
         </div>
       </div>
     </div>
