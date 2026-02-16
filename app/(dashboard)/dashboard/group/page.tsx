@@ -16,8 +16,6 @@ import { Entity } from '@/lib/types/sales';
 import toast from 'react-hot-toast';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
-import { getDashboardData, transformMonthlyTrend, transformQuarterly } from '@/lib/dashboard';
 
 const ENTITIES: Entity[] = ['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania'];
 
@@ -37,7 +35,7 @@ export default function InBodyGroupDashboardPage() {
   const [fgDistribution, setFGDistribution] = useState<any[]>([]);
   const [entitySales, setEntitySales] = useState<any[]>([]);
   const [countrySales, setCountrySales] = useState<any[]>([]);
-  const [topProducts, setTopProducts] = useState<any[]>([]);
+  const [topProducts, setTopProducts] = useState<any>({ byAmount: [], byQuantity: [], categories: [], allProducts: [] });
   const [industryBreakdown, setIndustryBreakdown] = useState<any[]>([]);
 
   useEffect(() => {
@@ -66,48 +64,72 @@ export default function InBodyGroupDashboardPage() {
     setLoading(true);
     try {
       const yearInt = parseInt(year);
-      const fgFilter = fg && fg !== 'All' ? fg : null;
       
-      // For group dashboard, we need to aggregate data from all entities
-      // If RPC function supports multiple entities, pass them as array
-      // Otherwise, we might need to call RPC for each entity and aggregate
-      // For now, assuming RPC accepts 'All' or comma-separated entities
-      const entityParam = entities.length > 0 ? entities.join(',') : 'All';
+      console.log(`📊 Fetching InBody Group dashboard data (KRW) for year: ${yearInt}`);
       
-      console.log(`📊 Fetching group dashboard data via RPC for year: ${yearInt}, entities: ${entityParam}, fg: ${fgFilter}`);
-      
-      // Create Supabase client
-      const supabase = createClient();
-      
-      // For group dashboard, we might need to call RPC for 'All' entities
-      // or aggregate multiple entity calls
-      // Assuming get_dashboard RPC can handle 'All' or multiple entities
-      const dashboardData = await getDashboardData(supabase, entityParam, yearInt, fgFilter);
-      
-      console.log(`✅ Group dashboard data received via RPC:`, {
-        year: yearInt,
-        entities: entityParam,
-        total_amount: dashboardData.total_amount,
-        prev_year_amount: dashboardData.prev_year_amount,
-        monthly_trend_count: dashboardData.monthly_trend.length,
-        quarterly_count: dashboardData.quarterly.length,
-        channels_count: dashboardData.channels.length,
-        top_products_count: dashboardData.top_products_amount.length,
-        industries_count: dashboardData.industries.length,
-        entity_list: dashboardData.entity_list,
+      // Fetch all data in parallel using new InBody Group APIs
+      const [
+        summaryRes,
+        monthlyRes,
+        quarterlyRes,
+        entitySalesRes,
+        fgDistributionRes,
+        countrySalesRes,
+        topProductsRes,
+        industryRes,
+      ] = await Promise.all([
+        fetch(`/api/dashboard/inbody-group/summary?year=${yearInt}`),
+        fetch(`/api/dashboard/inbody-group/monthly-trend?year=${yearInt}`),
+        fetch(`/api/dashboard/inbody-group/quarterly?year=${yearInt}`),
+        fetch(`/api/dashboard/inbody-group/entity-sales?year=${yearInt}`),
+        fetch(`/api/dashboard/inbody-group/fg-distribution?year=${yearInt}`),
+        fetch(`/api/dashboard/inbody-group/country-sales?year=${yearInt}`),
+        fetch(`/api/dashboard/inbody-group/top-products?year=${yearInt}&limit=10`),
+        fetch(`/api/dashboard/inbody-group/industry?year=${yearInt}`),
+      ]);
+
+      const [
+        summary,
+        monthly,
+        quarterly,
+        entitySalesData,
+        fgData,
+        countryData,
+        topProductsData,
+        industryData,
+      ] = await Promise.all([
+        summaryRes.json(),
+        monthlyRes.json(),
+        quarterlyRes.json(),
+        entitySalesRes.json(),
+        fgDistributionRes.json(),
+        countrySalesRes.json(),
+        topProductsRes.json(),
+        industryRes.json(),
+      ]);
+
+      console.log(`✅ InBody Group dashboard data received (KRW):`, {
+        current_amount_krw: summary?.current_year?.total_amount_krw,
+        previous_amount_krw: summary?.previous_year?.total_amount_krw,
+        monthly_count: monthly?.length,
+        monthly_sample: monthly?.slice(0, 2),
+        quarterly_count: quarterly?.length,
+        entities_count: entitySalesData?.length,
       });
       
       // Transform data for KPI cards
-      const amountChange = dashboardData.prev_year_amount > 0
-        ? ((dashboardData.total_amount - dashboardData.prev_year_amount) / dashboardData.prev_year_amount) * 100
+      const currentAmount = summary?.current_year?.total_amount_krw || 0;
+      const prevAmount = summary?.previous_year?.total_amount_krw || 0;
+      const amountChange = prevAmount > 0
+        ? ((currentAmount - prevAmount) / prevAmount) * 100
         : 0;
       
       setKpiData({
-        totalAmount: dashboardData.total_amount,
-        totalQty: 0, // RPC에서 제공되지 않으면 0
+        totalAmount: currentAmount,
+        totalQty: 0,
         avgAmount: 0,
-        totalTransactions: 0,
-        prevTotalAmount: dashboardData.prev_year_amount,
+        totalTransactions: summary?.current_year?.total_records || 0,
+        prevTotalAmount: prevAmount,
         prevTotalQty: 0,
         comparison: {
           amount: amountChange,
@@ -115,41 +137,58 @@ export default function InBodyGroupDashboardPage() {
         },
       });
       
-      // Transform monthly trend data
-      const monthlyTrendData = transformMonthlyTrend(dashboardData.monthly_trend, yearInt);
-      setMonthlyTrend(monthlyTrendData);
-      
-      // Transform quarterly data
-      const quarterlyData = transformQuarterly(dashboardData.quarterly, yearInt);
-      setQuarterlyComparison(quarterlyData);
-      
-      // Set FG distribution
-      setFGDistribution(dashboardData.fg_list?.map((fg: string) => ({
-        fg_classification: fg,
-        amount: 0, // RPC에서 제공되지 않으면 0
+      // Monthly trend data
+      setMonthlyTrend(monthly?.map((item: any) => ({
+        month: item.month,
+        amount: item.amount,
+        quantity: item.quantity,
+        prevAmount: item.prev_amount,
+        prevQuantity: item.prev_quantity,
       })) || []);
       
-      // Entity sales - convert entity_list to chart format
-      // If RPC provides entity sales data, use it; otherwise derive from entity_list
-      setEntitySales(dashboardData.entity_list?.map((e: string) => ({
-        entity: e,
-        amount: 0, // RPC에서 제공되지 않으면 0
+      // Quarterly data
+      setQuarterlyComparison(quarterly?.map((item: any) => ({
+        quarter: item.quarter, // SQL에서 이미 "Q1", "Q2" 형식으로 반환됨
+        currentYear: item.current_amount || 0,
+        previousYear: item.previous_amount || 0,
+        currentQuantity: item.current_quantity || 0,
+        previousQuantity: item.previous_quantity || 0,
       })) || []);
       
-      // Country sales - might need separate RPC call or be included in dashboard data
-      // For now, set empty array if not provided
-      setCountrySales([]);
+      // FG distribution
+      setFGDistribution(fgData?.map((item: any) => ({
+        fg_classification: item.fg_classification,
+        amount: item.amount,
+        quantity: item.quantity,
+      })) || []);
       
-      // Set other data directly from RPC response
-      setTopProducts(dashboardData.top_products_amount.map((p, idx) => ({
-        product: p.product,
-        amount: p.amount,
-        quantity: dashboardData.top_products_quantity[idx]?.quantity || 0,
-      })));
-      setIndustryBreakdown(dashboardData.industries);
+      // Entity sales
+      setEntitySales(entitySalesData?.map((item: any) => ({
+        entity: item.entity,
+        amount: item.amount,
+        quantity: item.quantity,
+      })) || []);
+      
+      // Country sales
+      setCountrySales(countryData?.map((item: any) => ({
+        country: item.country,
+        amount: item.amount,
+        quantity: item.quantity,
+      })) || []);
+      
+      // Top products - API에서 이미 HQ 형식으로 반환됨 (byAmount, byQuantity, categories, allProducts)
+      setTopProducts(topProductsData || { byAmount: [], byQuantity: [], categories: [], allProducts: [] });
+      
+      // Industry breakdown
+      setIndustryBreakdown(industryData?.map((item: any) => ({
+        industry: item.industry,
+        amount: item.amount,
+        quantity: item.quantity,
+      })) || []);
+      
     } catch (error) {
       toast.error('Failed to load dashboard data');
-      console.error('Failed to fetch group dashboard data via RPC:', error);
+      console.error('Failed to fetch InBody Group dashboard data:', error);
     } finally {
       setLoading(false);
     }
@@ -193,7 +232,7 @@ export default function InBodyGroupDashboardPage() {
               InBody Group Sales Dashboard
             </h1>
             <p className="text-muted-foreground mt-2">
-              Analyze sales performance across all entities
+              Analyze sales performance across all entities (Amount in KRW)
             </p>
           </div>
         </div>
@@ -227,6 +266,11 @@ export default function InBodyGroupDashboardPage() {
             <MonthlyTrendChart data={monthlyTrend} loading={loading} entity="All" currentYear={parseInt(year)} />
           </div>
 
+          {/* Entity Sales Section - Full Width */}
+          <div className="grid gap-6 md:grid-cols-1">
+            <EntitySalesChart data={entitySales} loading={loading} />
+          </div>
+
           {/* Quarterly Comparison and Country Sales Section */}
           <div className="grid gap-6 md:grid-cols-2">
             <QuarterlyComparisonChart
@@ -238,11 +282,8 @@ export default function InBodyGroupDashboardPage() {
             <CountrySalesChart data={countrySales} loading={loading} entity="All" />
           </div>
 
-          {/* FG & Entity Section */}
-          <div className="grid gap-6 md:grid-cols-2">
-            <FGDistributionChart data={fgDistribution} loading={loading} />
-            <EntitySalesChart data={entitySales} loading={loading} />
-          </div>
+          {/* FG Distribution */}
+          <FGDistributionChart data={fgDistribution} loading={loading} />
           
           {/* Top Products Section */}
           <TopProductsChart data={topProducts} loading={loading} entity="All" />

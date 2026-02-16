@@ -5,9 +5,10 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recha
 import { formatCurrency, formatCNH, formatJPY } from '@/lib/utils/formatters';
 
 interface FGDistributionData {
-  fg: string;
+  fg?: string;
+  fg_classification?: string;
   amount: number;
-  percentage: number;
+  percentage?: number;
 }
 
 interface FGDistributionChartProps {
@@ -52,10 +53,13 @@ export function FGDistributionChart({ data, loading, entity }: FGDistributionCha
     );
   }
 
+  // Calculate total for percentage calculation
+  const total = data.reduce((sum, item) => sum + item.amount, 0);
+  
   const chartData = data.map((item) => ({
-    name: item.fg,
+    name: item.fg || item.fg_classification || 'Unknown',
     value: item.amount,
-    percentage: item.percentage,
+    percentage: total > 0 ? (item.amount / total) * 100 : 0,
   }));
 
   return (
@@ -72,7 +76,7 @@ export function FGDistributionChart({ data, loading, entity }: FGDistributionCha
               cx="50%"
               cy="50%"
               labelLine={false}
-              label={({ name, percentage }) => `${name}: ${percentage.toFixed(1)}%`}
+              label={({ name, percentage }) => `${name}: ${(percentage || 0).toFixed(1)}%`}
               outerRadius={100}
               innerRadius={60}
               fill="#8884d8"

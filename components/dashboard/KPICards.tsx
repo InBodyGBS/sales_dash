@@ -23,7 +23,7 @@ interface KPICardsProps {
 }
 
 export function KPICards({ data, loading, entity }: KPICardsProps) {
-  const isKRWEntity = entity && ['HQ', 'Healthcare', 'Korot'].includes(entity);
+  const isKRWEntity = entity && ['HQ', 'Healthcare', 'Korot', 'All'].includes(entity);
   const isVNDEntity = entity === 'Vietnam';
   const isJPYEntity = entity === 'Japan';
   const isCNHEntity = entity === 'China';

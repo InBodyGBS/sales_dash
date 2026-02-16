@@ -29,10 +29,10 @@ export default function DashboardLayout({
                     Upload
                   </Button>
                 </Link>
-                <Link href="/item-mapping">
+                <Link href="/master-mapping">
                   <Button variant="ghost" size="sm">
                     <Settings className="h-4 w-4 mr-2" />
-                    Item Mapping
+                    Master Mapping
                   </Button>
                 </Link>
               </div>

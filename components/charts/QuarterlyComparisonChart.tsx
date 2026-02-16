@@ -19,7 +19,7 @@ interface QuarterlyComparisonChartProps {
 }
 
 export function QuarterlyComparisonChart({ data, currentYear, loading, entity }: QuarterlyComparisonChartProps) {
-  const isKRWEntity = entity && ['HQ', 'Healthcare', 'Korot'].includes(entity);
+  const isKRWEntity = entity && ['HQ', 'Healthcare', 'Korot', 'All'].includes(entity);
   const isVNDEntity = entity === 'Vietnam';
   const isJPYEntity = entity === 'Japan';
   const isCNHEntity = entity === 'China';

@@ -29,7 +29,7 @@ interface TopProductsChartProps {
 
 export function TopProductsChart({ data, loading, entity }: TopProductsChartProps) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const isKRWEntity = entity && ['HQ', 'Healthcare', 'Korot'].includes(entity);
+  const isKRWEntity = entity && ['HQ', 'Healthcare', 'Korot', 'All'].includes(entity);
   const isVNDEntity = entity === 'Vietnam';
   const isJPYEntity = entity === 'Japan';
   const isCNHEntity = entity === 'China';

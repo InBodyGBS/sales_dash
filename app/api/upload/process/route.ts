@@ -457,6 +457,21 @@ export async function POST(request: NextRequest) {
       const groupStr = group?.toString().trim() || '';
       const invoiceAccountStr = invoiceAccount?.toString().trim() || '';
 
+      // China: Group에 따라 특정 Channel 매핑
+      if (entityUpper === 'CHINA') {
+        if (groupStr === 'CG12' || groupStr === 'Direct') {
+          return 'Direct';
+        } else if (groupStr === 'CG22') {
+          return 'Inter-Company';
+        }
+        return groupStr || null;
+      }
+
+      // Oceania, India, Japan, Mexico: group 값을 그대로 channel로 사용
+      if (['OCEANIA', 'INDIA', 'JAPAN', 'MEXICO'].includes(entityUpper)) {
+        return groupStr || null;
+      }
+
       // HQ entity
       if (entityUpper === 'HQ') {
         if (groupStr === 'CG11' || groupStr === 'CG31') {

@@ -31,7 +31,7 @@ const COLORS = [
 ];
 
 export function IndustryBreakdownChart({ data, loading, entity }: IndustryBreakdownChartProps) {
-  const isKRWEntity = entity && ['HQ', 'Healthcare', 'Korot'].includes(entity);
+  const isKRWEntity = entity && ['HQ', 'Healthcare', 'Korot', 'All'].includes(entity);
   const isVNDEntity = entity === 'Vietnam';
   const isJPYEntity = entity === 'Japan';
   const isCNHEntity = entity === 'China';
