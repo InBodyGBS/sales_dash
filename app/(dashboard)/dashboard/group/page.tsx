@@ -17,7 +17,7 @@ import toast from 'react-hot-toast';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 
-const ENTITIES: Entity[] = ['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania'];
+const ENTITIES: Entity[] = ['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe'];
 
 export default function InBodyGroupDashboardPage() {
   const router = useRouter();

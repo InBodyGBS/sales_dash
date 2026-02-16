@@ -46,8 +46,9 @@ export function FileUploader({ entity, onUploadSuccess }: FileUploaderProps) {
     const file = acceptedFiles[0];
     setUploadedFile(file);
     
-    // For Japan, China, India, Mexico, Oceania, show mapping dialog first
-    if (entity === 'Japan' || entity === 'China' || entity === 'India' || entity === 'Mexico' || entity === 'Oceania') {
+    // For Japan, China, India, Mexico, Oceania, Netherlands, Germany, UK, Asia, Europe, show mapping dialog first
+    if (entity === 'Japan' || entity === 'China' || entity === 'India' || entity === 'Mexico' || entity === 'Oceania' || 
+        entity === 'Netherlands' || entity === 'Germany' || entity === 'UK' || entity === 'Asia' || entity === 'Europe') {
       setShowMappingDialog(true);
       return;
     }

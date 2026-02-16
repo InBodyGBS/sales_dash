@@ -74,6 +74,42 @@ export function formatAUD(amount: number): string {
   }).format(amount);
 }
 
+export function formatEUR(amount: number): string {
+  return new Intl.NumberFormat('de-DE', {
+    style: 'currency',
+    currency: 'EUR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
+export function formatGBP(amount: number): string {
+  return new Intl.NumberFormat('en-GB', {
+    style: 'currency',
+    currency: 'GBP',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
+export function formatMYR(amount: number): string {
+  return new Intl.NumberFormat('ms-MY', {
+    style: 'currency',
+    currency: 'MYR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
+export function formatSGD(amount: number): string {
+  return new Intl.NumberFormat('en-SG', {
+    style: 'currency',
+    currency: 'SGD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
 // Compact formatters for Y-axis (M unit only, no K unit)
 export function formatCompactCurrency(amount: number, currency: string = 'USD'): string {
   // Always use M unit, no K unit
@@ -111,6 +147,26 @@ export function formatCompactINR(amount: number): string {
 }
 
 export function formatCompactAUD(amount: number): string {
+  // Always use M unit, no K unit
+  return `${(amount / 1000000).toFixed(1)}M`;
+}
+
+export function formatCompactEUR(amount: number): string {
+  // Always use M unit, no K unit
+  return `${(amount / 1000000).toFixed(1)}M`;
+}
+
+export function formatCompactGBP(amount: number): string {
+  // Always use M unit, no K unit
+  return `${(amount / 1000000).toFixed(1)}M`;
+}
+
+export function formatCompactMYR(amount: number): string {
+  // Always use M unit, no K unit
+  return `${(amount / 1000000).toFixed(1)}M`;
+}
+
+export function formatCompactSGD(amount: number): string {
   // Always use M unit, no K unit
   return `${(amount / 1000000).toFixed(1)}M`;
 }

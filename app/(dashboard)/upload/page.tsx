@@ -179,6 +179,10 @@ export default function UploadPage() {
                 <SelectItem value="India">India</SelectItem>
                 <SelectItem value="Mexico">Mexico</SelectItem>
                 <SelectItem value="Oceania">Oceania</SelectItem>
+                <SelectItem value="Netherlands">Netherlands</SelectItem>
+                <SelectItem value="Germany">Germany</SelectItem>
+                <SelectItem value="UK">UK</SelectItem>
+                <SelectItem value="Asia">Asia</SelectItem>
               </SelectContent>
             </Select>
           </div>

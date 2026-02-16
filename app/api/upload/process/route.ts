@@ -36,8 +36,8 @@ export async function POST(request: NextRequest) {
     // 3. Create Supabase client
     const supabase = createServiceClient();
 
-    // Entities that require item mapping (Japan, China, India, Mexico, Oceania)
-    const entitiesRequiringItemMapping = ['Japan', 'China', 'India', 'Mexico', 'Oceania'];
+    // Entities that require item mapping (Japan, China, India, Mexico, Oceania, Netherlands, Germany, UK, Asia, Europe)
+    const entitiesRequiringItemMapping = ['Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe'];
     const requiresItemMapping = entitiesRequiringItemMapping.includes(entity);
 
     // 3.1. Load item mapping with fallback logic:
@@ -467,8 +467,8 @@ export async function POST(request: NextRequest) {
         return groupStr || null;
       }
 
-      // Oceania, India, Japan, Mexico: group 값을 그대로 channel로 사용
-      if (['OCEANIA', 'INDIA', 'JAPAN', 'MEXICO'].includes(entityUpper)) {
+      // Oceania, India, Japan, Mexico, Netherlands, Germany, UK, Asia, Europe: group 값을 그대로 channel로 사용
+      if (['OCEANIA', 'INDIA', 'JAPAN', 'MEXICO', 'NETHERLANDS', 'GERMANY', 'UK', 'ASIA', 'EUROPE'].includes(entityUpper)) {
         return groupStr || null;
       }
 
