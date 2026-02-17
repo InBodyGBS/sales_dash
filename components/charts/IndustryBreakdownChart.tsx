@@ -35,6 +35,7 @@ export function IndustryBreakdownChart({ data, loading, entity }: IndustryBreakd
   const isVNDEntity = entity === 'Vietnam';
   const isJPYEntity = entity === 'Japan';
   const isCNHEntity = entity === 'China';
+  const isEUREntity = entity && ['Netherlands', 'Germany', 'UK', 'Europe'].includes(entity);
   if (loading) {
     return (
       <Card>
@@ -65,8 +66,11 @@ export function IndustryBreakdownChart({ data, loading, entity }: IndustryBreakd
     );
   }
 
-  const total = data.reduce((sum, item) => sum + item.amount, 0);
-  const chartData = data.map((item) => ({
+  // Filter out negative amounts for pie chart (returns/refunds should not be in pie chart)
+  const positiveData = data.filter(item => item.amount > 0);
+  const total = positiveData.reduce((sum, item) => sum + item.amount, 0);
+  
+  const chartData = positiveData.map((item) => ({
     name: item.industry,
     value: item.amount,
     percentage: total > 0 ? (item.amount / total) * 100 : 0,
@@ -112,6 +116,8 @@ export function IndustryBreakdownChart({ data, loading, entity }: IndustryBreakd
                     formattedAmount = formatJPY(value);
                   } else if (isCNHEntity) {
                     formattedAmount = formatCNH(value);
+                  } else if (isEUREntity) {
+                    formattedAmount = formatCurrency(value, 'EUR');
                   } else {
                     formattedAmount = formatCurrency(value, 'USD');
                   }

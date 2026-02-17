@@ -27,6 +27,7 @@ export function MonthlyTrendChart({ data, loading, entity, currentYear }: Monthl
   const isVNDEntity = entity === 'Vietnam';
   const isJPYEntity = entity === 'Japan';
   const isCNHEntity = entity === 'China';
+  const isEUREntity = entity && ['Netherlands', 'Germany', 'UK', 'Europe'].includes(entity);
   if (loading) {
     return (
       <Card>
@@ -286,22 +287,23 @@ export function MonthlyTrendChart({ data, loading, entity, currentYear }: Monthl
               <>
                 <YAxis
                   domain={yAxisDomain}
-                  tickFormatter={(value) => formatCompactCurrency(value, 'USD')}
+                  tickFormatter={(value) => formatCompactCurrency(value, isEUREntity ? 'EUR' : 'USD')}
                   width={60}
                   tick={{ fontSize: 12 }}
                 />
                 <Tooltip
                   formatter={(value: number, name: string) => {
+                    const currency = isEUREntity ? 'EUR' : 'USD';
                     if (name === currentYear?.toString() || name === 'current') {
-                      return formatCurrency(value, 'USD');
+                      return formatCurrency(value, currency);
                     }
                     if (name === (currentYear ? (currentYear - 1).toString() : 'previous') || name === 'previous') {
-                      return formatCurrency(value, 'USD');
+                      return formatCurrency(value, currency);
                     }
                     if (name === 'amount') {
-                      return formatCurrency(value, 'USD');
+                      return formatCurrency(value, currency);
                     }
-                    return formatCurrency(value, 'USD');
+                    return formatCurrency(value, currency);
                   }}
                 />
                 <Legend />

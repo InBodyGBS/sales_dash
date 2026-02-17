@@ -30,6 +30,7 @@ export function KPICards({ data, loading, entity }: KPICardsProps) {
   const isMXNEntity = entity === 'Mexico';
   const isINREntity = entity === 'India';
   const isAUDEntity = entity === 'Oceania';
+  const isEUREntity = entity && ['Netherlands', 'Germany', 'UK', 'Europe'].includes(entity);
   
   if (loading) {
     return (
@@ -262,7 +263,8 @@ export function KPICards({ data, loading, entity }: KPICardsProps) {
     );
   }
 
-  // For other entities, show only Total Amount with USD format
+  // For other entities, show only Total Amount with appropriate currency format
+  const currency = isEUREntity ? 'EUR' : 'USD';
   return (
     <div className="grid gap-4 md:grid-cols-1">
       <Card>
@@ -271,10 +273,10 @@ export function KPICards({ data, loading, entity }: KPICardsProps) {
           <DollarSign className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{formatCurrency(data.totalAmount, 'USD')}</div>
+          <div className="text-2xl font-bold">{formatCurrency(data.totalAmount, currency)}</div>
           {data.prevTotalAmount !== undefined && data.prevTotalAmount > 0 && (
             <div className="text-sm text-muted-foreground mt-1">
-              Previous year: {formatCurrency(data.prevTotalAmount, 'USD')}
+              Previous year: {formatCurrency(data.prevTotalAmount, currency)}
             </div>
           )}
           <div className={`flex items-center text-xs mt-1 ${data.comparison.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>

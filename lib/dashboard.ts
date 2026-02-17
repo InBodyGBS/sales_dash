@@ -134,11 +134,13 @@ export function transformTopProducts(dashboardData: DashboardData) {
     );
     return {
       product: p.product,
-      amount: p.amount,
+      amount: (p.amount === null || p.amount === undefined) ? 0 : p.amount,
       qty: qtyMatch?.quantity || 0,
       category: allMatch?.category || null,
     };
-  });
+  })
+  .sort((a, b) => (b.amount || 0) - (a.amount || 0))  // 정렬 추가: 금액 높은 순
+  .slice(0, 10);  // Top 10만 유지
 
   const byQuantity = dashboardData.top_products_quantity.map((q) => {
     const amountMatch = dashboardData.top_products_amount.find(
@@ -150,21 +152,26 @@ export function transformTopProducts(dashboardData: DashboardData) {
     return {
       product: q.product,
       amount: amountMatch?.amount || 0,
-      qty: q.quantity,
+      qty: (q.quantity === null || q.quantity === undefined) ? 0 : q.quantity,
       category: allMatch?.category || null,
     };
-  });
+  })
+  .sort((a, b) => (b.qty || 0) - (a.qty || 0))  // 정렬 추가: 수량 많은 순
+  .slice(0, 10);  // Top 10만 유지
+
+  const allProducts = dashboardData.all_products.map((p) => ({
+    product: p.product,
+    amount: (p.amount === null || p.amount === undefined) ? 0 : p.amount,
+    qty: (p.qty === null || p.qty === undefined) ? 0 : p.qty,
+    category: p.category,
+  }))
+  .sort((a, b) => (b.amount || 0) - (a.amount || 0));  // 전체 제품도 정렬
 
   return {
     byAmount,
     byQuantity,
     categories: dashboardData.categories || [],
-    allProducts: dashboardData.all_products.map((p) => ({
-      product: p.product,
-      amount: p.amount,
-      qty: p.qty,
-      category: p.category,
-    })),
+    allProducts,
   };
 }
 

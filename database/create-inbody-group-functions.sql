@@ -270,14 +270,14 @@ BEGIN
                 CASE WHEN s.product = '__null__' THEN 'Unknown' ELSE s.product END as product,
                 CASE WHEN s.category = '__null__' THEN 'Unknown' ELSE s.category END as category,
                 CASE WHEN s.fg_classification = '__null__' THEN 'Unknown' ELSE s.fg_classification END as fg_classification,
-                SUM(
+                COALESCE(SUM(
                     CASE 
                         WHEN s.entity IN ('HQ', 'Korot', 'Healthcare') THEN s.total_amount
                         ELSE ROUND(s.total_amount * COALESCE(e.rate, 1))
                     END
-                ) as amount,
-                SUM(s.total_quantity) as quantity,
-                SUM(s.row_count) as transactions
+                ), 0) as amount,
+                COALESCE(SUM(s.total_quantity), 0) as quantity,
+                COALESCE(SUM(s.row_count), 0) as transactions
             FROM mv_sales_cube s
             LEFT JOIN entity_currency ec ON s.entity = ec.entity
             LEFT JOIN exchange_rate e ON s.year = e.year AND ec.currency = e.currency
@@ -285,12 +285,12 @@ BEGIN
                 AND (s.channel IS NULL OR s.channel != 'Inter-Company')
                 AND s.fg_classification = 'FG'
             GROUP BY s.product, s.category, s.fg_classification
-            ORDER BY SUM(
+            ORDER BY COALESCE(SUM(
                 CASE 
                     WHEN s.entity IN ('HQ', 'Korot', 'Healthcare') THEN s.total_amount
                     ELSE ROUND(s.total_amount * COALESCE(e.rate, 1))
                 END
-            ) DESC
+            ), 0) DESC
             LIMIT p_limit
         ) product_data
     );
@@ -303,7 +303,8 @@ GRANT EXECUTE ON FUNCTION get_inbody_group_top_products TO authenticated, anon, 
 -- 7. InBody Group 산업별 분석 (KRW)
 -- ============================================
 CREATE OR REPLACE FUNCTION get_inbody_group_industry(
-    p_year INTEGER
+    p_year INTEGER,
+    p_entities TEXT[] DEFAULT NULL
 )
 RETURNS JSON AS $$
 BEGIN
@@ -328,6 +329,7 @@ BEGIN
             LEFT JOIN exchange_rate e ON s.year = e.year AND ec.currency = e.currency
             WHERE s.year = p_year
                 AND (s.channel IS NULL OR s.channel != 'Inter-Company')
+                AND (p_entities IS NULL OR s.entity = ANY(p_entities))
             GROUP BY s.industry
         ) industry_data
     );

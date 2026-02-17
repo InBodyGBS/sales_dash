@@ -299,14 +299,15 @@ BEGIN
                 CASE WHEN product = '__null__' THEN 'Unknown' ELSE product END as product,
                 CASE WHEN category = '__null__' THEN 'Unknown' ELSE category END as category,
                 CASE WHEN fg_classification = '__null__' THEN 'Unknown' ELSE fg_classification END as fg_classification,
-                SUM(total_amount) as amount,
-                SUM(total_quantity) as quantity,
-                SUM(row_count) as transactions
+                COALESCE(SUM(total_amount), 0) as amount,
+                COALESCE(SUM(total_quantity), 0) as quantity,
+                COALESCE(SUM(row_count), 0) as transactions
             FROM mv_sales_cube
             WHERE year = p_year
                 AND (p_entities IS NULL OR entity = ANY(p_entities))
+                AND fg_classification = 'FG'
             GROUP BY product, category, fg_classification
-            ORDER BY SUM(total_amount) DESC
+            ORDER BY COALESCE(SUM(total_amount), 0) DESC
             LIMIT p_limit
         ) product_data
     );

@@ -23,6 +23,7 @@ export function QuarterlyComparisonChart({ data, currentYear, loading, entity }:
   const isVNDEntity = entity === 'Vietnam';
   const isJPYEntity = entity === 'Japan';
   const isCNHEntity = entity === 'China';
+  const isEUREntity = entity && ['Netherlands', 'Germany', 'UK', 'Europe'].includes(entity);
   if (loading) {
     return (
       <Card>
@@ -83,6 +84,7 @@ export function QuarterlyComparisonChart({ data, currentYear, loading, entity }:
                 if (isVNDEntity) return formatCompactVND(value);
                 if (isJPYEntity) return formatCompactJPY(value);
                 if (isCNHEntity) return formatCompactCNH(value);
+                if (isEUREntity) return formatCompactCurrency(value, 'EUR');
                 return formatCompactCurrency(value, 'USD');
               }}
               width={60}
@@ -94,6 +96,7 @@ export function QuarterlyComparisonChart({ data, currentYear, loading, entity }:
                 if (isVNDEntity) return formatVND(value);
                 if (isJPYEntity) return formatJPY(value);
                 if (isCNHEntity) return formatCNH(value);
+                if (isEUREntity) return formatCurrency(value, 'EUR');
                 return formatCurrency(value, 'USD');
               }}
             />

@@ -34,8 +34,8 @@ export async function GET(request: NextRequest) {
 
     const allProducts = (data || []).map((item: any) => ({
       product: item.product,
-      amount: item.amount,
-      qty: item.quantity,
+      amount: (item.amount === null || item.amount === undefined || isNaN(Number(item.amount))) ? 0 : Number(item.amount),
+      qty: (item.quantity === null || item.quantity === undefined || isNaN(Number(item.quantity))) ? 0 : Number(item.quantity),
       category: item.category,
     }));
 
@@ -52,8 +52,8 @@ export async function GET(request: NextRequest) {
 
     // Return HQ-like format
     const result = {
-      byAmount: [...allProducts].sort((a, b) => b.amount - a.amount).slice(0, limit),
-      byQuantity: [...allProducts].sort((a, b) => b.qty - a.qty).slice(0, limit),
+      byAmount: [...allProducts].sort((a, b) => (b.amount || 0) - (a.amount || 0)).slice(0, limit),
+      byQuantity: [...allProducts].sort((a, b) => (b.qty || 0) - (a.qty || 0)).slice(0, limit),
       categories,
       allProducts,
     };

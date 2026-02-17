@@ -50,10 +50,10 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Count query 최적화: id만 선택하여 타임아웃 방지
+      // Count query 최적화
       let countQuery = supabase
         .from('mv_sales_cube')
-        .select('id', { count: 'exact', head: true })
+        .select('entity', { count: 'exact', head: true })
         .eq('year', yearInt);
 
       if (useFGFilter) {
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
         timeoutPromise
       ]).catch((err) => {
         console.warn('⚠️ Top Products API - Count query timeout or error, proceeding without count:', err);
-        return { count: null, error: null }; // Count 없이 진행
+        return { count: null, error: null };
       }) as any;
       
       if (countError) {
@@ -100,12 +100,11 @@ export async function GET(request: NextRequest) {
         const from = page * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
         
-        // 정렬을 추가하여 일관된 결과 보장
         let query = supabase
           .from('mv_sales_cube')
-          .select('product_name, product, line_amount_mst, quantity, fg_classification, category', { count: 'exact', head: false })
+          .select('product_name, product, total_amount, total_quantity, fg_classification, category', { count: 'exact', head: false })
           .eq('year', yearInt)
-          .order('id', { ascending: true }); // 정렬 추가
+          .order('entity', { ascending: true });
 
         if (useFGFilter) {
           query = query.eq('fg_classification', 'FG');
@@ -115,16 +114,13 @@ export async function GET(request: NextRequest) {
           query = query.in('entity', entities);
         }
 
-        // range는 마지막에 적용
         query = query.range(from, to);
 
         const { data, error } = await query;
         
         if (error) {
-          // If fg_classification doesn't exist, try without the filter
           if (error.code === '42703' || error.message?.includes('fg_classification') || error.message?.includes('does not exist')) {
             useFGFilter = false;
-            // 재시도 (이미 useFGFilter가 false이므로 다음 루프에서 다시 시도)
             continue;
           }
           console.error('❌ Top Products API - Database error (page ' + page + '):', {
@@ -143,7 +139,6 @@ export async function GET(request: NextRequest) {
           allData = allData.concat(data);
           page++;
           
-          // 가져온 데이터가 전체 개수에 도달했는지 확인
           if (allData.length >= totalCount) {
             hasMore = false;
             console.log(`✅ Top Products - All data fetched: ${allData.length} records (expected: ${totalCount})`);
@@ -154,14 +149,12 @@ export async function GET(request: NextRequest) {
           hasMore = false;
         }
         
-        // 안전장치: 무한 루프 방지
         if (page > 1000) {
           console.warn(`⚠️ Top Products - Maximum page limit reached (1000 pages). Fetched ${allData.length} records out of ${totalCount}`);
           hasMore = false;
         }
       }
       
-      // 최종 확인
       if (allData.length < totalCount) {
         console.warn(`⚠️ Top Products - Warning: Fetched ${allData.length} records but expected ${totalCount}. Missing ${totalCount - allData.length} records.`);
       }
@@ -181,86 +174,47 @@ export async function GET(request: NextRequest) {
 
     // Group by product with category
     const productMap = new Map<string, { amount: number; qty: number; category: string | null }>();
-    let nullAmountCount = 0;
-    let zeroAmountCount = 0;
 
     data.forEach((row) => {
       const product = row.product || row.product_name || 'Unknown';
-      // Use the first non-null category for each product
       const category = row.category && row.category.trim() !== '' ? row.category.trim() : null;
       
-      // line_amount_mst 처리
-      if (row.line_amount_mst === null || row.line_amount_mst === undefined) {
-        nullAmountCount++;
-      } else {
-        const amount = Number(row.line_amount_mst);
-        if (isNaN(amount)) {
-          console.warn('Invalid line_amount_mst:', row.line_amount_mst);
-        } else {
-          if (!productMap.has(product)) {
-            productMap.set(product, { amount: 0, qty: 0, category });
-          } else {
-            // If product exists but category is null, update with non-null category
-            const existing = productMap.get(product)!;
-            if (!existing.category && category) {
-              existing.category = category;
-            }
-          }
-          const productData = productMap.get(product)!;
-          productData.amount += amount;
-          if (amount === 0) zeroAmountCount++;
-        }
+      // 제품이 없으면 초기화
+      if (!productMap.has(product)) {
+        productMap.set(product, { amount: 0, qty: 0, category });
       }
       
-      // quantity 처리
-      if (row.quantity !== null && row.quantity !== undefined) {
-        const qty = Number(row.quantity);
-        if (!isNaN(qty)) {
-          if (!productMap.has(product)) {
-            productMap.set(product, { amount: 0, qty: 0, category });
-          } else {
-            // If product exists but category is null, update with non-null category
-            const existing = productMap.get(product)!;
-            if (!existing.category && category) {
-              existing.category = category;
-            }
-          }
-          const productData = productMap.get(product)!;
-          productData.qty += qty;
-        }
+      const productData = productMap.get(product)!;
+      
+      // category 업데이트 (기존이 null이고 새 값이 있으면)
+      if (!productData.category && category) {
+        productData.category = category;
       }
+      
+      // amount 처리: NULL, undefined, NaN을 모두 0으로 변환
+      const rawAmount = row.total_amount;
+      const amount = (rawAmount === null || rawAmount === undefined || isNaN(Number(rawAmount))) 
+        ? 0 
+        : Number(rawAmount);
+      productData.amount += amount;
+      
+      // quantity 처리: NULL, undefined, NaN을 모두 0으로 변환
+      const rawQty = row.total_quantity;
+      const qty = (rawQty === null || rawQty === undefined || isNaN(Number(rawQty))) 
+        ? 0 
+        : Number(rawQty);
+      productData.qty += qty;
     });
-    
-    // 디버깅: 모든 엔티티에 상세 로그 적용
-    if (entities.length > 0 && !entities.includes('All')) {
-      const entityList = entities.join(', ');
-      console.log(`🔍 Top Products - 엔티티 집계 결과 (entities: ${entityList}):`, {
-        totalRecords: data.length,
-        nullAmountCount,
-        zeroAmountCount,
-        totalProducts: productMap.size,
-        useFGFilter,
-        topProductsByAmount: Array.from(productMap.entries())
-          .sort((a, b) => b[1].amount - a[1].amount)
-          .slice(0, 10)
-          .map(([product, data]) => ({
-            product,
-            amount: data.amount,
-            amountFormatted: data.amount.toLocaleString(),
-            qty: data.qty
-          }))
-      });
-    }
 
     const allProducts = Array.from(productMap.entries())
       .map(([product, data]) => ({
         product,
-        amount: data.amount,
-        qty: data.qty,
+        amount: data.amount || 0,  // null/undefined 방지
+        qty: data.qty || 0,        // null/undefined 방지
         category: data.category,
       }));
 
-    // Get unique categories from allProducts (from aggregated data)
+    // Get unique categories
     const categoriesFromProducts = Array.from(new Set(
       allProducts
         .map(p => p.category)
@@ -269,7 +223,6 @@ export async function GET(request: NextRequest) {
         })
     ));
 
-    // Also get all unique categories directly from raw data to ensure we don't miss any
     const categoriesFromRawData = Array.from(new Set(
       data
         .map(row => row.category)
@@ -278,8 +231,6 @@ export async function GET(request: NextRequest) {
         })
     ));
 
-    // Additionally, query database directly for all unique categories (for the given year and entities)
-    // This ensures we get ALL categories even if they don't appear in the top products
     let categoriesFromDB: string[] = [];
     try {
       let categoryQuery = supabase
@@ -308,35 +259,52 @@ export async function GET(request: NextRequest) {
               return cat !== null && cat !== undefined && typeof cat === 'string' && cat.trim() !== '';
             })
         ));
-        console.log(`✅ Fetched ${categoriesFromDB.length} categories from DB:`, categoriesFromDB);
-      } else {
-        console.warn('⚠️ No category data returned from DB query');
       }
     } catch (error) {
       console.error('❌ Exception while fetching categories from database:', error);
     }
 
-    // Combine all sources and get unique categories
     const allCategories = Array.from(new Set([
       ...categoriesFromProducts,
       ...categoriesFromRawData,
       ...categoriesFromDB
     ])).sort();
 
-    // Debug: Log all categories found
-    console.log(`📊 Top Products - Categories from products: ${categoriesFromProducts.length}`, categoriesFromProducts);
-    console.log(`📊 Top Products - Categories from raw data: ${categoriesFromRawData.length}`, categoriesFromRawData);
-    console.log(`📊 Top Products - Categories from DB: ${categoriesFromDB.length}`, categoriesFromDB);
-    console.log(`📊 Top Products - All unique categories: ${allCategories.length}`, allCategories);
-    console.log(`📊 Top Products - Total products: ${allProducts.length}, Products with category: ${allProducts.filter(p => p.category).length}`);
-
-    // Return both sorted by amount and by quantity, with categories
-    const result = {
-      byAmount: [...allProducts].sort((a, b) => b.amount - a.amount).slice(0, limit),
-      byQuantity: [...allProducts].sort((a, b) => b.qty - a.qty).slice(0, limit),
-      categories: allCategories, // Use all categories from both sources
-      allProducts, // Include all products for client-side filtering
+    // 정렬: amount가 0인 것들은 뒤로 보내기
+    const sortByAmount = (a: typeof allProducts[0], b: typeof allProducts[0]) => {
+      const aAmount = a.amount || 0;
+      const bAmount = b.amount || 0;
+      // 둘 다 0이면 이름순
+      if (aAmount === 0 && bAmount === 0) {
+        return a.product.localeCompare(b.product);
+      }
+      // 하나만 0이면 0인 것을 뒤로
+      if (aAmount === 0) return 1;
+      if (bAmount === 0) return -1;
+      // 둘 다 0이 아니면 내림차순
+      return bAmount - aAmount;
     };
+
+    const sortByQty = (a: typeof allProducts[0], b: typeof allProducts[0]) => {
+      const aQty = a.qty || 0;
+      const bQty = b.qty || 0;
+      if (aQty === 0 && bQty === 0) {
+        return a.product.localeCompare(b.product);
+      }
+      if (aQty === 0) return 1;
+      if (bQty === 0) return -1;
+      return bQty - aQty;
+    };
+
+    const result = {
+      byAmount: [...allProducts].sort(sortByAmount).slice(0, limit),
+      byQuantity: [...allProducts].sort(sortByQty).slice(0, limit),
+      categories: allCategories,
+      allProducts: allProducts.map(p => ({ ...p, amount: p.amount || 0, qty: p.qty || 0 })),
+    };
+
+    console.log(`✅ Top Products API - Returning ${result.byAmount.length} products by amount, ${result.byQuantity.length} by quantity`);
+    console.log(`📊 Top 3 by Amount:`, result.byAmount.slice(0, 3).map(p => ({ product: p.product, amount: p.amount })));
 
     return NextResponse.json(result);
   } catch (error) {

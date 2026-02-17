@@ -33,6 +33,8 @@ export function TopProductsChart({ data, loading, entity }: TopProductsChartProp
   const isVNDEntity = entity === 'Vietnam';
   const isJPYEntity = entity === 'Japan';
   const isCNHEntity = entity === 'China';
+  const isEUREntity = entity && ['Netherlands', 'Germany', 'UK', 'Europe'].includes(entity);
+  
   if (loading) {
     return (
       <Card>
@@ -55,8 +57,14 @@ export function TopProductsChart({ data, loading, entity }: TopProductsChartProp
   const responseData = isNewFormat ? (data as TopProductsResponse) : null;
   const categories = responseData?.categories || [];
   const allProducts = responseData?.allProducts || null;
-  const baseAmountData = isNewFormat && responseData ? responseData.byAmount : (data as TopProductsData[]);
-  const baseQuantityData = isNewFormat && responseData ? responseData.byQuantity : (data as TopProductsData[]);
+  
+  // Sort base data with NULL handling
+  const baseAmountData = isNewFormat && responseData 
+    ? [...responseData.byAmount].sort((a, b) => (b.amount || 0) - (a.amount || 0))
+    : [...(data as TopProductsData[])].sort((a, b) => (b.amount || 0) - (a.amount || 0));
+  const baseQuantityData = isNewFormat && responseData 
+    ? [...responseData.byQuantity].sort((a, b) => (b.qty || 0) - (a.qty || 0))
+    : [...(data as TopProductsData[])].sort((a, b) => (b.qty || 0) - (a.qty || 0));
 
   // Debug: Log categories and allProducts count
   console.log('TopProductsChart - Data format:', isNewFormat ? 'new' : 'old');
@@ -92,7 +100,7 @@ export function TopProductsChart({ data, loading, entity }: TopProductsChartProp
     // Category selected: Filter from allProducts and show top 10 of that category
     if (allProducts && allProducts.length > 0) {
       const filtered = allProducts.filter(item => item.category === selectedCategory);
-      const sorted = filtered.sort((a, b) => b.amount - a.amount);
+      const sorted = filtered.sort((a, b) => (b.amount || 0) - (a.amount || 0));
       const top10 = sorted.slice(0, 10);
       
       console.log(`TopProductsChart - Category "${selectedCategory}": ${filtered.length} products, showing top 10`);
@@ -113,7 +121,7 @@ export function TopProductsChart({ data, loading, entity }: TopProductsChartProp
     // Category selected: Filter from allProducts and show top 10 of that category
     if (allProducts && allProducts.length > 0) {
       const filtered = allProducts.filter(item => item.category === selectedCategory);
-      const sorted = filtered.sort((a, b) => b.qty - a.qty);
+      const sorted = filtered.sort((a, b) => (b.qty || 0) - (a.qty || 0));
       const top10 = sorted.slice(0, 10);
       
       return top10;
@@ -139,17 +147,22 @@ export function TopProductsChart({ data, loading, entity }: TopProductsChartProp
     );
   }
 
-  const amountChartData = amountData.map((item) => ({
-    product: item.product,
-    amount: item.amount,
-    qty: item.qty,
-  }));
+  // Sort again before creating chart data to ensure correct order
+  const amountChartData = [...amountData]
+    .sort((a, b) => (b.amount || 0) - (a.amount || 0))
+    .map((item) => ({
+      product: item.product,
+      amount: item.amount || 0,
+      qty: item.qty || 0,
+    }));
 
-  const quantityChartData = quantityData.map((item) => ({
-    product: item.product,
-    amount: item.amount,
-    qty: item.qty,
-  }));
+  const quantityChartData = [...quantityData]
+    .sort((a, b) => (b.qty || 0) - (a.qty || 0))
+    .map((item) => ({
+      product: item.product,
+      amount: item.amount || 0,
+      qty: item.qty || 0,
+    }));
 
   return (
     <Card>
@@ -201,6 +214,7 @@ export function TopProductsChart({ data, loading, entity }: TopProductsChartProp
                     if (isVNDEntity) return formatCompactVND(value);
                     if (isJPYEntity) return formatCompactJPY(value);
                     if (isCNHEntity) return formatCompactCNH(value);
+                    if (isEUREntity) return formatCompactCurrency(value, 'EUR');
                     return formatCompactCurrency(value, 'USD');
                   }} 
                 />
@@ -219,6 +233,7 @@ export function TopProductsChart({ data, loading, entity }: TopProductsChartProp
                       if (isVNDEntity) return formatVND(value);
                       if (isJPYEntity) return formatJPY(value);
                       if (isCNHEntity) return formatCNH(value);
+                      if (isEUREntity) return formatCurrency(value, 'EUR');
                       return formatCurrency(value, 'USD');
                     }
                     return formatNumber(value);
