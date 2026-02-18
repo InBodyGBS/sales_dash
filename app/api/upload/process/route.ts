@@ -10,7 +10,7 @@ export const maxDuration = 300; // 5 minutes
 
 export async function POST(request: NextRequest) {
   let batchId = '';
-  let historyId: string | null = null; // catch 블록에서 사용하기 위해 함수 스코프에 선언
+  let historyId: string | null = null;
   
   try {
     console.log('📥 File processing request received');
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     // 1. Parse request body
     const body = await request.json();
     const { storagePath, entity, fileName, historyId: bodyHistoryId, columnMapping } = body;
-    historyId = bodyHistoryId || null; // body에서 추출한 값을 함수 스코프 변수에 할당
+    historyId = bodyHistoryId || null;
 
     console.log('📄 Storage Path:', storagePath);
     console.log('🏢 Entity:', entity);
@@ -36,18 +36,15 @@ export async function POST(request: NextRequest) {
     // 3. Create Supabase client
     const supabase = createServiceClient();
 
-    // Entities that require item mapping (Japan, China, India, Mexico, Oceania, Netherlands, Germany, UK, Asia, Europe)
+    // Entities that require item mapping
     const entitiesRequiringItemMapping = ['Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe'];
     const requiresItemMapping = entitiesRequiringItemMapping.includes(entity);
 
-    // 3.1. Load item mapping with fallback logic:
-    // 1. First check item_master (master table, no entity needed)
-    // 2. If not found in master, check item_mapping (entity-specific)
+    // 3.1. Load item mapping with fallback logic
     let itemMappingMap: Map<string, { fg_classification?: string; category?: string; model?: string; product?: string }> = new Map();
     if (requiresItemMapping) {
       console.log(`🔍 Loading item mappings (master first, then entity-specific)...`);
       
-      // Load both item_master and item_mapping
       const [masterResult, mappingResult] = await Promise.all([
         supabase
           .from('item_master')
@@ -63,14 +60,12 @@ export async function POST(request: NextRequest) {
       const { data: itemMasters, error: itemMasterError } = masterResult;
       const { data: itemMappings, error: itemMappingError } = mappingResult;
 
-      // Helper function to normalize item_number (trim and handle case)
       const normalizeItemNumber = (itemNumber: string | null | undefined): string | null => {
         if (!itemNumber) return null;
         const trimmed = itemNumber.toString().trim();
         return trimmed === '' ? null : trimmed;
       };
 
-      // First, load all item_master mappings (priority)
       if (!itemMasterError && itemMasters && itemMasters.length > 0) {
         let masterCount = 0;
         itemMasters.forEach((mapping: any) => {
@@ -85,19 +80,16 @@ export async function POST(request: NextRequest) {
             masterCount++;
           }
         });
-        console.log(`✅ Loaded ${masterCount} item mappings from item_master (${itemMasters.length} total, ${itemMasters.length - masterCount} skipped due to empty item_number)`);
+        console.log(`✅ Loaded ${masterCount} item mappings from item_master`);
       } else if (itemMasterError && itemMasterError.code !== '42P01') {
-        // Only warn if it's not a "table doesn't exist" error
         console.warn('⚠️ Failed to load item_master:', itemMasterError.message);
       }
 
-      // Then, load item_mapping for items not found in master (fallback)
       if (!itemMappingError && itemMappings && itemMappings.length > 0) {
         let fallbackCount = 0;
         itemMappings.forEach((mapping: any) => {
           const normalizedItemNumber = normalizeItemNumber(mapping.item_number);
           if (normalizedItemNumber) {
-            // Only add if not already in map (master has priority)
             if (!itemMappingMap.has(normalizedItemNumber)) {
               itemMappingMap.set(normalizedItemNumber, {
                 fg_classification: mapping.fg_classification || undefined,
@@ -113,11 +105,10 @@ export async function POST(request: NextRequest) {
           console.log(`✅ Loaded ${fallbackCount} additional item mappings from item_mapping (entity: ${entity})`);
         }
       } else if (itemMappingError && itemMappingError.code !== '42P01') {
-        // Only warn if it's not a "table doesn't exist" error
         console.warn('⚠️ Failed to load item_mapping:', itemMappingError.message);
       }
 
-      console.log(`📊 Total ${itemMappingMap.size} item mappings loaded (master + entity-specific fallback)`);
+      console.log(`📊 Total ${itemMappingMap.size} item mappings loaded`);
     }
 
     // 4. Download file from Supabase Storage
@@ -138,15 +129,14 @@ export async function POST(request: NextRequest) {
 
     // 5. Convert Blob to ArrayBuffer and parse Excel
     const arrayBuffer = await fileData.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+    const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
-    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false, dateNF: 'yyyy-mm-dd' });
 
     console.log(`📊 Parsed ${jsonData.length} rows from Excel`);
 
     if (jsonData.length === 0) {
-      // 히스토리 업데이트
       if (historyId) {
         await supabase
           .from('upload_history')
@@ -167,7 +157,6 @@ export async function POST(request: NextRequest) {
       batchId = historyId;
     } else {
       batchId = uuidv4();
-      // 새 히스토리 생성
       const { error: historyError } = await supabase
         .from('upload_history')
         .insert({
@@ -184,18 +173,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 8. Transform and insert data
+    // 7. Load column mapping
     console.log('🔄 Transforming data...');
     
-    // Load column mapping from database if not provided
     let columnMap: { [key: string]: string } = {};
     
     if (columnMapping && Object.keys(columnMapping).length > 0) {
-      // Use provided mapping
       columnMap = columnMapping;
       console.log(`📋 Using provided column mapping (${Object.keys(columnMap).length} mappings)`);
     } else {
-      // Try to load from database
       try {
         const mappingResponse = await supabase
           .from('column_mapping')
@@ -209,194 +195,22 @@ export async function POST(request: NextRequest) {
           });
           console.log(`📋 Loaded column mapping from database (${Object.keys(columnMap).length} mappings)`);
         } else {
-          // Use default mapping
           console.log('📋 Using default column mapping');
-          columnMap = {
-            'Sales Type': 'sales_type',
-            'Invoice': 'invoice',
-            'Voucher': 'voucher',
-            'Invoice date': 'invoice_date',
-            'Pool': 'pool',
-            'Supply method': 'supply_method',
-            'Sub Method - 1': 'sub_method_1',
-            'Sub Method - 2': 'sub_method_2',
-            'Sub Method - 3': 'sub_method_3',
-            'Application': 'application',
-            'Industry': 'industry',
-            'Sub Industry - 1': 'sub_industry_1',
-            'Sub Industry - 2': 'sub_industry_2',
-            'General group': 'general_group',
-            'Sales order': 'sales_order',
-            'Account number': 'account_number',
-            'Name': 'name',
-            'Name2': 'name2',
-            'Customer invoice account': 'customer_invoice_account',
-            'Invoice account': 'invoice_account',
-            'Group': 'group',
-            'Currency': 'currency',
-            'Invoice Amount': 'invoice_amount',
-            'Invoice Amount_MST': 'invoice_amount_mst',
-            'Sales tax amount': 'sales_tax_amount',
-            'The sales tax amount, in the accounting currency': 'sales_tax_amount_accounting',
-            'Total for invoice': 'total_for_invoice',
-            'Total_MST': 'total_mst',
-            'Open balance': 'open_balance',
-            'Due date': 'due_date',
-            'Sales tax group': 'sales_tax_group',
-            'Payment type': 'payment_type',
-            'Terms of payment': 'terms_of_payment',
-            'Payment schedule': 'payment_schedule',
-            'Method of payment': 'method_of_payment',
-            'Posting profile': 'posting_profile',
-            'Delivery terms': 'delivery_terms',
-            'H_DIM_WK': 'h_dim_wk',
-            'H_WK_NAME': 'h_wk_name',
-            'H_DIM_CC': 'h_dim_cc',
-            'H DIM NAME': 'h_dim_name',
-            'Line number': 'line_number',
-            'Street': 'street',
-            'City': 'city',
-            'State': 'state',
-            'ZIP/postal code': 'zip_postal_code',
-            'Final ZipCode': 'final_zipcode',
-            'Region': 'region',
-            'Product type': 'product_type',
-            'Item group': 'item_group',
-            'Category': 'category',
-            'Model': 'model',
-            'Item number': 'item_number',
-            'Product name': 'product_name',
-            'Text': 'text',
-            'Warehouse': 'warehouse',
-            'Name3': 'name3',
-            'Quantity': 'quantity',
-            'Inventory unit': 'inventory_unit',
-            'Price unit': 'price_unit',
-            'Net amount': 'net_amount',
-            'Line Amount_MST': 'line_amount_mst',
-            'Sales tax group2': 'sales_tax_group2',
-            'TaxItemGroup': 'tax_item_group',
-            'Mode of delivery': 'mode_of_delivery',
-            'Dlv Detail': 'dlv_detail',
-            'Online order': 'online_order',
-            'Sales channel': 'sales_channel',
-            'Promotion': 'promotion',
-            '2nd Sales': 'second_sales',
-            'Personnel number': 'personnel_number',
-            'WORKERNAME': 'worker_name',
-            'L DIM NAME': 'l_dim_name',
-            'L_DIM_WK': 'l_dim_wk',
-            'L_WK_NAME': 'l_wk_name',
-            'L_DIM_CC': 'l_dim_cc',
-            'Main account': 'main_account',
-            'Account name': 'account_name',
-            'Rebate': 'rebate',
-            'Description': 'description',
-            'Country': 'country',
-            'CREATEDDATE': 'created_date',
-            'CREATEDBY': 'created_by',
-            'Exception': 'exception',
-            'With collection agency': 'with_collection_agency',
-            'Credit rating': 'credit_rating',
-          };
+          columnMap = getDefaultColumnMapping();
         }
       } catch (mappingError) {
         console.warn('⚠️ Failed to load column mapping, using default:', mappingError);
-        // Use default mapping as fallback
-        columnMap = {
-          'Sales Type': 'sales_type',
-          'Invoice': 'invoice',
-          'Voucher': 'voucher',
-          'Invoice date': 'invoice_date',
-          'Pool': 'pool',
-          'Supply method': 'supply_method',
-          'Sub Method - 1': 'sub_method_1',
-          'Sub Method - 2': 'sub_method_2',
-          'Sub Method - 3': 'sub_method_3',
-          'Application': 'application',
-          'Industry': 'industry',
-          'Sub Industry - 1': 'sub_industry_1',
-          'Sub Industry - 2': 'sub_industry_2',
-          'General group': 'general_group',
-          'Sales order': 'sales_order',
-          'Account number': 'account_number',
-          'Name': 'name',
-          'Name2': 'name2',
-          'Customer invoice account': 'customer_invoice_account',
-          'Invoice account': 'invoice_account',
-          'Group': 'group',
-          'Currency': 'currency',
-          'Invoice Amount': 'invoice_amount',
-          'Invoice Amount_MST': 'invoice_amount_mst',
-          'Sales tax amount': 'sales_tax_amount',
-          'The sales tax amount, in the accounting currency': 'sales_tax_amount_accounting',
-          'Total for invoice': 'total_for_invoice',
-          'Total_MST': 'total_mst',
-          'Open balance': 'open_balance',
-          'Due date': 'due_date',
-          'Sales tax group': 'sales_tax_group',
-          'Payment type': 'payment_type',
-          'Terms of payment': 'terms_of_payment',
-          'Payment schedule': 'payment_schedule',
-          'Method of payment': 'method_of_payment',
-          'Posting profile': 'posting_profile',
-          'Delivery terms': 'delivery_terms',
-          'H_DIM_WK': 'h_dim_wk',
-          'H_WK_NAME': 'h_wk_name',
-          'H_DIM_CC': 'h_dim_cc',
-          'H DIM NAME': 'h_dim_name',
-          'Line number': 'line_number',
-          'Street': 'street',
-          'City': 'city',
-          'State': 'state',
-          'ZIP/postal code': 'zip_postal_code',
-          'Final ZipCode': 'final_zipcode',
-          'Region': 'region',
-          'Product type': 'product_type',
-          'Item group': 'item_group',
-          'Category': 'category',
-          'Model': 'model',
-          'Item number': 'item_number',
-          'Product name': 'product_name',
-          'Text': 'text',
-          'Warehouse': 'warehouse',
-          'Name3': 'name3',
-          'Quantity': 'quantity',
-          'Inventory unit': 'inventory_unit',
-          'Price unit': 'price_unit',
-          'Net amount': 'net_amount',
-          'Line Amount_MST': 'line_amount_mst',
-          'Sales tax group2': 'sales_tax_group2',
-          'TaxItemGroup': 'tax_item_group',
-          'Mode of delivery': 'mode_of_delivery',
-          'Dlv Detail': 'dlv_detail',
-          'Online order': 'online_order',
-          'Sales channel': 'sales_channel',
-          'Promotion': 'promotion',
-          '2nd Sales': 'second_sales',
-          'Personnel number': 'personnel_number',
-          'WORKERNAME': 'worker_name',
-          'L DIM NAME': 'l_dim_name',
-          'L_DIM_WK': 'l_dim_wk',
-          'L_WK_NAME': 'l_wk_name',
-          'L_DIM_CC': 'l_dim_cc',
-          'Main account': 'main_account',
-          'Account name': 'account_name',
-          'Rebate': 'rebate',
-          'Description': 'description',
-          'Country': 'country',
-          'CREATEDDATE': 'created_date',
-          'CREATEDBY': 'created_by',
-          'Exception': 'exception',
-          'With collection agency': 'with_collection_agency',
-          'Credit rating': 'credit_rating',
-        };
+        columnMap = getDefaultColumnMapping();
       }
     }
 
+    // ============================================
+    // 개선된 parseDate 함수 - 다양한 날짜 형식 지원
+    // ============================================
     function parseDate(value: any): string | null {
       if (!value) return null;
       
+      // 1. 엑셀 숫자 형식 (Serial Date Number)
       if (typeof value === 'number') {
         const date = XLSX.SSF.parse_date_code(value);
         if (date) {
@@ -404,10 +218,115 @@ export async function POST(request: NextRequest) {
         }
       }
       
+      // 2. Date 객체
+      if (value instanceof Date && !isNaN(value.getTime())) {
+        const year = value.getFullYear();
+        const month = String(value.getMonth() + 1).padStart(2, '0');
+        const day = String(value.getDate()).padStart(2, '0');
+        if (year >= 1900 && year <= 2100) {
+          return `${year}-${month}-${day}`;
+        }
+      }
+      
+      // 3. 문자열 형식
       if (typeof value === 'string') {
-        const parsedDate = new Date(value);
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+        
+        // 3-1. ISO 형식: 2025-01-15, 2025/01/15
+        const isoMatch = trimmed.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+        if (isoMatch) {
+          const [, year, month, day] = isoMatch;
+          return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        }
+        
+        // 3-2. 미국 형식: 01/15/2025, 01-15-2025, 1/15/2025
+        const usMatch = trimmed.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
+        if (usMatch) {
+          const [, month, day, year] = usMatch;
+          return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        }
+        
+        // 3-3. 유럽 형식: 15.01.2025
+        const euDotMatch = trimmed.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+        if (euDotMatch) {
+          const [, day, month, year] = euDotMatch;
+          if (parseInt(month) <= 12) {
+            return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+          }
+        }
+        
+        // 3-4. 짧은 연도 형식: 01/15/25, 15/01/25
+        const shortYearMatch = trimmed.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2})$/);
+        if (shortYearMatch) {
+          const [, first, second, shortYear] = shortYearMatch;
+          const year = parseInt(shortYear) > 50 ? `19${shortYear}` : `20${shortYear}`;
+          if (parseInt(first) <= 12) {
+            return `${year}-${first.padStart(2, '0')}-${second.padStart(2, '0')}`;
+          } else {
+            return `${year}-${second.padStart(2, '0')}-${first.padStart(2, '0')}`;
+          }
+        }
+        
+        // 3-5. 텍스트 월 형식: Jan 15, 2025 / 15 Jan 2025 / January 15, 2025
+        const monthNames: { [key: string]: string } = {
+          'jan': '01', 'january': '01',
+          'feb': '02', 'february': '02',
+          'mar': '03', 'march': '03',
+          'apr': '04', 'april': '04',
+          'may': '05',
+          'jun': '06', 'june': '06',
+          'jul': '07', 'july': '07',
+          'aug': '08', 'august': '08',
+          'sep': '09', 'september': '09',
+          'oct': '10', 'october': '10',
+          'nov': '11', 'november': '11',
+          'dec': '12', 'december': '12',
+        };
+        
+        // Jan 15, 2025 또는 January 15, 2025
+        const textMonthMatch1 = trimmed.match(/^([a-zA-Z]+)\s+(\d{1,2}),?\s+(\d{4})/i);
+        if (textMonthMatch1) {
+          const [, monthStr, day, year] = textMonthMatch1;
+          const month = monthNames[monthStr.toLowerCase()];
+          if (month) {
+            return `${year}-${month}-${day.padStart(2, '0')}`;
+          }
+        }
+        
+        // 15 Jan 2025 또는 15 January 2025
+        const textMonthMatch2 = trimmed.match(/^(\d{1,2})\s+([a-zA-Z]+)\s+(\d{4})/i);
+        if (textMonthMatch2) {
+          const [, day, monthStr, year] = textMonthMatch2;
+          const month = monthNames[monthStr.toLowerCase()];
+          if (month) {
+            return `${year}-${month}-${day.padStart(2, '0')}`;
+          }
+        }
+        
+        // 3-6. YYYYMMDD 형식: 20250115
+        const compactMatch = trimmed.match(/^(\d{4})(\d{2})(\d{2})$/);
+        if (compactMatch) {
+          const [, year, month, day] = compactMatch;
+          return `${year}-${month}-${day}`;
+        }
+        
+        // 3-7. 날짜+시간 형식: 2025-01-15T10:30:00, 2025-01-15 10:30:00
+        const dateTimeMatch = trimmed.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})[T\s]/);
+        if (dateTimeMatch) {
+          const [, year, month, day] = dateTimeMatch;
+          return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        }
+        
+        // 3-8. JavaScript Date 객체로 파싱 시도 (마지막 수단)
+        const parsedDate = new Date(trimmed);
         if (!isNaN(parsedDate.getTime())) {
-          return parsedDate.toISOString().split('T')[0];
+          const year = parsedDate.getFullYear();
+          const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
+          const day = String(parsedDate.getDate()).padStart(2, '0');
+          if (year >= 1900 && year <= 2100) {
+            return `${year}-${month}-${day}`;
+          }
         }
       }
       
@@ -424,13 +343,17 @@ export async function POST(request: NextRequest) {
       return null;
     }
 
-    // 숫자 필드 변환 함수 (문자열 "No", "Yes" 등을 null로 처리)
+    function getMonth(dateStr: string | null): number | null {
+      if (!dateStr) return null;
+      const month = parseInt(dateStr.split('-')[1]);
+      return isNaN(month) ? null : month;
+    }
+
     function parseNumeric(value: any): number | null {
       if (value === undefined || value === null || value === '') {
         return null;
       }
       
-      // 문자열이 "No", "Yes", "N/A" 등인 경우 null 반환
       if (typeof value === 'string') {
         const trimmed = value.trim();
         if (trimmed === '' || 
@@ -444,12 +367,10 @@ export async function POST(request: NextRequest) {
         }
       }
       
-      // 숫자로 변환 시도
       const num = typeof value === 'number' ? value : Number(value);
       return isNaN(num) ? null : num;
     }
 
-    // Channel 계산 함수
     function calculateChannel(entity: string, group: string | null, invoiceAccount: string | null): string | null {
       if (!entity || !group) return null;
       
@@ -457,7 +378,6 @@ export async function POST(request: NextRequest) {
       const groupStr = group?.toString().trim() || '';
       const invoiceAccountStr = invoiceAccount?.toString().trim() || '';
 
-      // China: Group에 따라 특정 Channel 매핑
       if (entityUpper === 'CHINA') {
         if (groupStr === 'CG12' || groupStr === 'Direct') {
           return 'Direct';
@@ -467,15 +387,12 @@ export async function POST(request: NextRequest) {
         return groupStr || null;
       }
 
-      // Oceania, India, Japan, Mexico, Netherlands, Germany, UK, Asia, Europe: group 값을 그대로 channel로 사용
       if (['OCEANIA', 'INDIA', 'JAPAN', 'MEXICO', 'NETHERLANDS', 'GERMANY', 'UK', 'ASIA', 'EUROPE'].includes(entityUpper)) {
         return groupStr || null;
       }
 
-      // HQ entity
       if (entityUpper === 'HQ') {
         if (groupStr === 'CG11' || groupStr === 'CG31') {
-          // Check if invoice_account is in Distributor list
           const hqDistributors = [
             'HC000140', 'HC000282', 'HC000290', 'HC000382', 'HC000469',
             'HC000543', 'HC000586', 'HC000785', 'HC005195', 'HC005197',
@@ -492,10 +409,8 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // KOROT entity
       if (entityUpper === 'KOROT') {
         if (groupStr === 'CG11' || groupStr === 'CG31') {
-          // Check if invoice_account is in Distributor list
           const korotDistributors = [
             'KC000140', 'KC000282', 'KC000382', 'KC000469', 'KC000543',
             'KC000586', 'KC000785', 'KC005873', 'KC005974', 'KC010343',
@@ -512,10 +427,8 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Healthcare entity
       if (entityUpper === 'HEALTHCARE') {
         if (groupStr === 'CG11' || groupStr === 'CG31') {
-          // Check if invoice_account is in Distributor list
           const healthcareDistributors = [
             'HCC000005', 'HCC000006', 'HCC000007', 'HCC000008', 'HCC000009',
             'HCC000010', 'HCC000011', 'HCC000012', 'HCC000013', 'HCC000273'
@@ -531,7 +444,6 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Vietnam entity
       if (entityUpper === 'VIETNAM') {
         if (groupStr === 'CG12' || groupStr === 'CG16' || groupStr === 'CG17' || groupStr === 'CG31') {
           return 'Direct';
@@ -544,7 +456,6 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // BWA entity
       if (entityUpper === 'BWA') {
         const groupUpper = groupStr.toUpperCase();
         if (groupUpper === 'DOMESTIC' || groupUpper === 'ETC') {
@@ -556,7 +467,6 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // USA entity
       if (entityUpper === 'USA') {
         if (invoiceAccountStr === 'UC000001') {
           return 'Distributor';
@@ -574,7 +484,6 @@ export async function POST(request: NextRequest) {
       return null;
     }
 
-    // 숫자 타입 컬럼 목록
     const numericColumns = [
       'line_number',
       'quantity',
@@ -592,12 +501,10 @@ export async function POST(request: NextRequest) {
       'year',
     ];
 
-    // Japan 엔티티의 경우: 매핑 테이블에 없는 컬럼은 필터링
     const isJapanEntity = entity === 'Japan';
     let filteredJsonData = jsonData;
     
     if (isJapanEntity && Object.keys(columnMap).length > 0) {
-      // 매핑에 있는 컬럼만 유지
       const mappedColumns = Object.keys(columnMap);
       filteredJsonData = jsonData.map((row: any) => {
         const filteredRow: any = {};
@@ -628,26 +535,23 @@ export async function POST(request: NextRequest) {
           
           if (dbCol === 'invoice_date' && transformed[dbCol]) {
             transformed.year = parseInt(transformed[dbCol].split('-')[0]);
+            transformed.month = getMonth(transformed[dbCol]);
             transformed.quarter = getQuarter(transformed[dbCol]);
           }
         } else if (numericColumns.includes(dbCol)) {
-          // 숫자 타입 컬럼은 parseNumeric으로 변환
           const numValue = parseNumeric(value);
           if (numValue !== null) {
             transformed[dbCol] = numValue;
           }
         } else if (value !== undefined && value !== null && value !== '') {
-          // 문자열 타입 컬럼은 그대로 사용
           transformed[dbCol] = value;
         }
       }
 
-      // Industry가 NULL이면 'Other'로 설정
       if (!transformed.industry || transformed.industry === null || transformed.industry === '') {
         transformed.industry = 'Other';
       }
 
-      // Channel 계산 및 추가
       const channel = calculateChannel(
         entity,
         transformed.group || null,
@@ -657,16 +561,11 @@ export async function POST(request: NextRequest) {
         transformed.channel = channel;
       }
 
-      // Item Mapping 적용 (Japan, China 등)
-      // 규칙: 1) item_master에 동일 item_number가 있으면 먼저 mapping
-      //       2) 없다면 item_mapping에서 동일 entity의 값을 가져오기
       if (requiresItemMapping && transformed.item_number) {
-        // Normalize item_number (trim whitespace)
         const normalizedItemNumber = transformed.item_number.toString().trim();
         if (normalizedItemNumber) {
           const itemMapping = itemMappingMap.get(normalizedItemNumber);
           if (itemMapping) {
-            // 매핑된 값이 있으면 덮어쓰기 (null이 아닌 값만)
             if (itemMapping.fg_classification !== undefined && itemMapping.fg_classification !== null) {
               transformed.fg_classification = itemMapping.fg_classification;
             }
@@ -679,11 +578,6 @@ export async function POST(request: NextRequest) {
             if (itemMapping.product !== undefined && itemMapping.product !== null) {
               transformed.product = itemMapping.product;
             }
-          } else {
-            // Debug: Log when item_number is not found in mapping
-            if (process.env.NODE_ENV === 'development') {
-              console.log(`⚠️ Item number "${normalizedItemNumber}" not found in item mapping`);
-            }
           }
         }
       }
@@ -692,32 +586,27 @@ export async function POST(request: NextRequest) {
     });
 
     // 9. Insert data in batches
-    const BATCH_SIZE = 250; // 배치 크기 더 감소 (500 -> 250)
+    const BATCH_SIZE = 250;
     let totalInserted = 0;
     let totalSkipped = 0;
     const errors: any[] = [];
     const startTime = Date.now();
-    const MAX_PROCESSING_TIME = 240 * 1000; // 240초 (4분) 타임아웃 - maxDuration(300초)보다 여유 있게
+    const MAX_PROCESSING_TIME = 240 * 1000;
 
-    // 타임아웃 체크 함수 (경고만, 에러는 발생시키지 않음)
     const checkTimeout = () => {
       const elapsed = Date.now() - startTime;
       if (elapsed > MAX_PROCESSING_TIME) {
         console.warn(`⏱️ Processing time exceeded ${MAX_PROCESSING_TIME / 1000}s, but continuing...`);
-        // 타임아웃이 발생해도 계속 진행 (maxDuration이 더 길기 때문)
       }
     };
 
-    // 재귀적으로 배치를 나눠서 삽입하는 함수 (이진 분할)
     const insertBatchRecursive = async (batch: any[], minSize: number = 10): Promise<{ inserted: number; skipped: number }> => {
       checkTimeout();
 
-      // 최소 크기에 도달하면 개별 레코드 처리
       if (batch.length <= minSize) {
         let inserted = 0;
         let skipped = 0;
 
-        // 개별 레코드를 병렬로 처리 (최대 5개씩)
         const PARALLEL_SIZE = 5;
         for (let i = 0; i < batch.length; i += PARALLEL_SIZE) {
           const parallelBatch = batch.slice(i, i + PARALLEL_SIZE);
@@ -767,7 +656,6 @@ export async function POST(request: NextRequest) {
         return { inserted, skipped };
       }
 
-      // 배치 삽입 시도
       try {
         const { data, error } = await supabase
           .from('sales_data')
@@ -775,21 +663,8 @@ export async function POST(request: NextRequest) {
           .select();
 
         if (error) {
-          // 중복 에러인 경우 배치를 반으로 나눠서 재시도
           if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('unique constraint')) {
-            // 중복 에러 상세 로깅
-            console.log(`⚠️ Duplicate error in batch of ${batch.length} records. Error: ${error.message}`);
-            if (batch.length <= 20) {
-              // 작은 배치일 때는 샘플 레코드 로깅
-              const sample = batch.slice(0, 3).map(r => ({
-                entity: r.entity,
-                invoice: r.invoice,
-                invoice_date: r.invoice_date,
-                item_number: r.item_number,
-                line_number: r.line_number,
-              }));
-              console.log(`Sample records:`, JSON.stringify(sample, null, 2));
-            }
+            console.log(`⚠️ Duplicate error in batch of ${batch.length} records.`);
             
             const mid = Math.floor(batch.length / 2);
             const firstHalf = batch.slice(0, mid);
@@ -803,7 +678,6 @@ export async function POST(request: NextRequest) {
               skipped: firstResult.skipped + secondResult.skipped,
             };
           } else {
-            // 다른 에러는 기록하고 배치를 반으로 나눠서 재시도
             errors.push({
               batch: batch.length,
               error: error.message,
@@ -822,14 +696,12 @@ export async function POST(request: NextRequest) {
             };
           }
         } else {
-          // 성공
           return {
             inserted: data?.length || batch.length,
             skipped: 0,
           };
         }
       } catch (batchError) {
-        // 예외 발생 시 배치를 반으로 나눠서 재시도
         const mid = Math.floor(batch.length / 2);
         const firstHalf = batch.slice(0, mid);
         const secondHalf = batch.slice(mid);
@@ -844,7 +716,6 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    // 배치 단위로 처리
     for (let i = 0; i < transformedData.length; i += BATCH_SIZE) {
       checkTimeout();
 
@@ -860,13 +731,11 @@ export async function POST(request: NextRequest) {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(`✅ Batch ${batchNumber}/${totalBatches}: ${result.inserted} inserted, ${result.skipped} skipped (${elapsed}s elapsed)`);
         
-        // 배치 사이에 짧은 딜레이 추가 (서버 부하 감소)
         if (i + BATCH_SIZE < transformedData.length) {
-          await new Promise(resolve => setTimeout(resolve, 50)); // 50ms 딜레이
+          await new Promise(resolve => setTimeout(resolve, 50));
         }
       } catch (error) {
         console.error(`❌ Batch ${batchNumber} error:`, error);
-        // 에러가 발생해도 계속 진행 (부분 완료)
         errors.push({
           batch: batchNumber,
           error: (error as Error).message,
@@ -895,19 +764,17 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ Upload complete: ${totalInserted} rows inserted, ${totalSkipped} rows skipped`);
 
-    // 데이터 업로드 완료 후 대시보드 캐시 갱신
+    // 11. Refresh dashboard cache
     try {
       console.log('🔄 Refreshing dashboard cache...');
       const { error: refreshError } = await supabase.rpc('refresh_dashboard');
       if (refreshError) {
         console.warn('⚠️ Failed to refresh dashboard cache:', refreshError.message);
-        // 대시보드 갱신 실패는 업로드 성공에 영향을 주지 않음
       } else {
         console.log('✅ Dashboard cache refreshed successfully');
       }
     } catch (refreshError) {
       console.warn('⚠️ Error refreshing dashboard cache:', refreshError);
-      // 대시보드 갱신 실패는 업로드 성공에 영향을 주지 않음
     }
 
     return NextResponse.json({
@@ -944,4 +811,97 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// Default column mapping
+function getDefaultColumnMapping(): { [key: string]: string } {
+  return {
+    'Sales Type': 'sales_type',
+    'Invoice': 'invoice',
+    'Voucher': 'voucher',
+    'Invoice date': 'invoice_date',
+    'Date': 'invoice_date',
+    'Pool': 'pool',
+    'Supply method': 'supply_method',
+    'Sub Method - 1': 'sub_method_1',
+    'Sub Method - 2': 'sub_method_2',
+    'Sub Method - 3': 'sub_method_3',
+    'Application': 'application',
+    'Industry': 'industry',
+    'Sub Industry - 1': 'sub_industry_1',
+    'Sub Industry - 2': 'sub_industry_2',
+    'General group': 'general_group',
+    'Sales order': 'sales_order',
+    'Account number': 'account_number',
+    'Name': 'name',
+    'Name2': 'name2',
+    'Customer invoice account': 'customer_invoice_account',
+    'Invoice account': 'invoice_account',
+    'Group': 'group',
+    'Currency': 'currency',
+    'Invoice Amount': 'invoice_amount',
+    'Invoice Amount_MST': 'invoice_amount_mst',
+    'Sales tax amount': 'sales_tax_amount',
+    'The sales tax amount, in the accounting currency': 'sales_tax_amount_accounting',
+    'Total for invoice': 'total_for_invoice',
+    'Total_MST': 'total_mst',
+    'Open balance': 'open_balance',
+    'Due date': 'due_date',
+    'Sales tax group': 'sales_tax_group',
+    'Payment type': 'payment_type',
+    'Terms of payment': 'terms_of_payment',
+    'Payment schedule': 'payment_schedule',
+    'Method of payment': 'method_of_payment',
+    'Posting profile': 'posting_profile',
+    'Delivery terms': 'delivery_terms',
+    'H_DIM_WK': 'h_dim_wk',
+    'H_WK_NAME': 'h_wk_name',
+    'H_DIM_CC': 'h_dim_cc',
+    'H DIM NAME': 'h_dim_name',
+    'Line number': 'line_number',
+    'Street': 'street',
+    'City': 'city',
+    'State': 'state',
+    'ZIP/postal code': 'zip_postal_code',
+    'Final ZipCode': 'final_zipcode',
+    'Region': 'region',
+    'Product type': 'product_type',
+    'Item group': 'item_group',
+    'Category': 'category',
+    'Model': 'model',
+    'Item number': 'item_number',
+    'Product name': 'product_name',
+    'Text': 'text',
+    'Warehouse': 'warehouse',
+    'Name3': 'name3',
+    'Quantity': 'quantity',
+    'Inventory unit': 'inventory_unit',
+    'Price unit': 'price_unit',
+    'Net amount': 'net_amount',
+    'Line Amount_MST': 'line_amount_mst',
+    'Sales tax group2': 'sales_tax_group2',
+    'TaxItemGroup': 'tax_item_group',
+    'Mode of delivery': 'mode_of_delivery',
+    'Dlv Detail': 'dlv_detail',
+    'Online order': 'online_order',
+    'Sales channel': 'sales_channel',
+    'Promotion': 'promotion',
+    '2nd Sales': 'second_sales',
+    'Personnel number': 'personnel_number',
+    'WORKERNAME': 'worker_name',
+    'L DIM NAME': 'l_dim_name',
+    'L_DIM_WK': 'l_dim_wk',
+    'L_WK_NAME': 'l_wk_name',
+    'L_DIM_CC': 'l_dim_cc',
+    'Main account': 'main_account',
+    'Account name': 'account_name',
+    'Rebate': 'rebate',
+    'Description': 'description',
+    'Country': 'country',
+    'CREATEDDATE': 'created_date',
+    'CREATEDBY': 'created_by',
+    'Exception': 'exception',
+    'With collection agency': 'with_collection_agency',
+    'Credit rating': 'credit_rating',
+  };
 }
