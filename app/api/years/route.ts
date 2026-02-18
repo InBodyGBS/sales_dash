@@ -11,14 +11,13 @@ export async function GET(request: NextRequest) {
     const supabase = createServiceClient();
     console.log('✅ Supabase client created');
     
-    // 최적화된 방법: PostgreSQL RPC 함수를 사용하여 DISTINCT year 직접 쿼리
     console.log('🔄 Fetching distinct years using RPC function...');
     
     try {
-      // RPC 함수를 사용하여 고유 연도만 가져오기 (매우 빠름!)
+      // RPC 함수 호출 - 파라미터 이름을 p_entity로 수정
       const { data, error } = await supabase
         .rpc('get_distinct_years', { 
-          entity_name: entity && entity !== 'All' ? entity : null 
+          p_entity: entity && entity !== 'All' ? entity : null 
         });
 
       if (error) {
@@ -29,17 +28,16 @@ export async function GET(request: NextRequest) {
           hint: error.hint,
         });
         
-        // If RPC function doesn't exist or timeout, use fallback method
+        // RPC 함수가 없거나 타임아웃이면 fallback
         if (error.code === '42883' || error.code === '57014' || error.message?.includes('function') || error.message?.includes('does not exist') || error.message?.includes('timeout')) {
-          console.warn('⚠️ RPC failed (function not found or timeout). Using fallback method with limit...');
+          console.warn('⚠️ RPC failed. Using fallback method...');
           
-          // Fallback: Use simple select with limit
           let fallbackQuery = supabase
             .from('mv_sales_cube')
             .select('year')
             .not('year', 'is', null)
             .order('year', { ascending: false })
-            .limit(50000); // 더 많은 행을 가져와서 모든 연도 확인
+            .limit(50000);
           
           if (entity && entity !== 'All') {
             fallbackQuery = fallbackQuery.eq('entity', entity);
@@ -49,7 +47,6 @@ export async function GET(request: NextRequest) {
           
           if (fallbackError) {
             console.error('❌ Fallback query also failed:', fallbackError);
-            // If it's a "table not found" error, return empty array
             if (fallbackError.code === '42P01' || fallbackError.code === 'PGRST116' || fallbackError.code === 'PGRST205') {
               console.warn('Table does not exist, returning empty years array');
               return NextResponse.json({ years: [] });
@@ -64,7 +61,6 @@ export async function GET(request: NextRequest) {
             );
           }
           
-          // Extract unique years from fallback data
           const fallbackYears: number[] = [];
           if (fallbackData && Array.isArray(fallbackData)) {
             console.log(`   Fallback: Found ${fallbackData.length} rows`);
@@ -85,7 +81,6 @@ export async function GET(request: NextRequest) {
           return NextResponse.json({ years: fallbackYears });
         }
         
-        // If it's a "table not found" error, return empty array
         if (error.code === '42P01' || error.code === 'PGRST116' || error.code === 'PGRST205') {
           console.warn('Table does not exist, returning empty years array');
           return NextResponse.json({ years: [] });
@@ -101,7 +96,7 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      // RPC function returns array of {year: number}
+      // RPC 결과 처리
       const years: number[] = [];
       if (data && Array.isArray(data)) {
         console.log(`   Found ${data.length} distinct years from RPC`);
@@ -116,14 +111,12 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // Sort descending (should already be sorted by RPC, but just in case)
       years.sort((a, b) => b - a);
 
       console.log(`✅ Fetched ${years.length} unique years for entity: ${entity || 'All'}:`, years);
       
-      // If no years found but entity was specified, log a warning
       if (years.length === 0 && entity && entity !== 'All') {
-        console.warn(`⚠️ No years found for entity: ${entity}. This may indicate missing data or year column issues.`);
+        console.warn(`⚠️ No years found for entity: ${entity}. This may indicate missing data.`);
       }
 
       return NextResponse.json({ years });

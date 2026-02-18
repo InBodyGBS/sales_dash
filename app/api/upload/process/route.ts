@@ -129,12 +129,24 @@ export async function POST(request: NextRequest) {
 
     // 5. Convert Blob to ArrayBuffer and parse Excel
     const arrayBuffer = await fileData.arrayBuffer();
+    // cellDates: true 옵션으로 날짜를 Date 객체로 파싱
     const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
-    const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false, dateNF: 'yyyy-mm-dd' });
+    // raw: true로 원본 값 유지, defval로 빈 셀 처리
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: true, defval: null });
 
     console.log(`📊 Parsed ${jsonData.length} rows from Excel`);
+
+    // 첫 번째 행의 날짜 컬럼 값 디버깅
+    if (jsonData.length > 0) {
+      const firstRow = jsonData[0] as any;
+      console.log('📅 First row date columns:', {
+        Date: firstRow['Date'],
+        DateType: typeof firstRow['Date'],
+        isDate: firstRow['Date'] instanceof Date,
+      });
+    }
 
     if (jsonData.length === 0) {
       if (historyId) {
@@ -210,21 +222,24 @@ export async function POST(request: NextRequest) {
     function parseDate(value: any): string | null {
       if (!value) return null;
       
-      // 1. 엑셀 숫자 형식 (Serial Date Number)
-      if (typeof value === 'number') {
-        const date = XLSX.SSF.parse_date_code(value);
-        if (date) {
-          return `${date.y}-${String(date.m).padStart(2, '0')}-${String(date.d).padStart(2, '0')}`;
-        }
-      }
-      
-      // 2. Date 객체
+      // 1. Date 객체 (엑셀에서 cellDates: true로 읽은 경우)
       if (value instanceof Date && !isNaN(value.getTime())) {
         const year = value.getFullYear();
         const month = String(value.getMonth() + 1).padStart(2, '0');
         const day = String(value.getDate()).padStart(2, '0');
         if (year >= 1900 && year <= 2100) {
           return `${year}-${month}-${day}`;
+        }
+      }
+      
+      // 2. 엑셀 숫자 형식 (Serial Date Number)
+      if (typeof value === 'number') {
+        // 엑셀 시리얼 넘버 범위 체크 (1900-01-01 ~ 2100-12-31)
+        if (value > 0 && value < 100000) {
+          const date = XLSX.SSF.parse_date_code(value);
+          if (date) {
+            return `${date.y}-${String(date.m).padStart(2, '0')}-${String(date.d).padStart(2, '0')}`;
+          }
         }
       }
       
@@ -333,9 +348,8 @@ export async function POST(request: NextRequest) {
       return null;
     }
 
-    function getQuarter(dateStr: string | null): string | null {
-      if (!dateStr) return null;
-      const month = parseInt(dateStr.split('-')[1]);
+    function getQuarter(month: number | null): string | null {
+      if (!month) return null;
       if (month >= 1 && month <= 3) return 'Q1';
       if (month >= 4 && month <= 6) return 'Q2';
       if (month >= 7 && month <= 9) return 'Q3';
@@ -345,8 +359,22 @@ export async function POST(request: NextRequest) {
 
     function getMonth(dateStr: string | null): number | null {
       if (!dateStr) return null;
-      const month = parseInt(dateStr.split('-')[1]);
-      return isNaN(month) ? null : month;
+      const parts = dateStr.split('-');
+      if (parts.length >= 2) {
+        const month = parseInt(parts[1]);
+        return isNaN(month) ? null : month;
+      }
+      return null;
+    }
+
+    function getYear(dateStr: string | null): number | null {
+      if (!dateStr) return null;
+      const parts = dateStr.split('-');
+      if (parts.length >= 1) {
+        const year = parseInt(parts[0]);
+        return isNaN(year) ? null : year;
+      }
+      return null;
     }
 
     function parseNumeric(value: any): number | null {
@@ -372,11 +400,14 @@ export async function POST(request: NextRequest) {
     }
 
     function calculateChannel(entity: string, group: string | null, invoiceAccount: string | null): string | null {
-      if (!entity || !group) return null;
+      if (!entity) return null;
       
       const entityUpper = entity.toUpperCase();
       const groupStr = group?.toString().trim() || '';
       const invoiceAccountStr = invoiceAccount?.toString().trim() || '';
+
+      // group이 비어있으면 null 반환 (일부 엔티티 제외)
+      if (!groupStr) return null;
 
       if (entityUpper === 'CHINA') {
         if (groupStr === 'CG12' || groupStr === 'Direct') {
@@ -387,6 +418,7 @@ export async function POST(request: NextRequest) {
         return groupStr || null;
       }
 
+      // 이 엔티티들은 group 값을 그대로 channel로 사용
       if (['OCEANIA', 'INDIA', 'JAPAN', 'MEXICO', 'NETHERLANDS', 'GERMANY', 'UK', 'ASIA', 'EUROPE'].includes(entityUpper)) {
         return groupStr || null;
       }
@@ -521,22 +553,36 @@ export async function POST(request: NextRequest) {
       console.log(`🇯🇵 Japan entity: Filtered columns from ${originalColumnCount} to ${filteredColumnCount} mapped columns`);
     }
 
-    const transformedData = filteredJsonData.map((row: any) => {
+    const transformedData = filteredJsonData.map((row: any, index: number) => {
       const transformed: any = {
         entity: entity,
         upload_batch_id: batchId,
       };
 
+      // 먼저 모든 컬럼 매핑 처리
       for (const [excelCol, dbCol] of Object.entries(columnMap)) {
         const value = row[excelCol];
         
         if (dbCol === 'invoice_date' || dbCol === 'due_date' || dbCol === 'created_date') {
-          transformed[dbCol] = parseDate(value);
+          const parsedDate = parseDate(value);
+          transformed[dbCol] = parsedDate;
           
-          if (dbCol === 'invoice_date' && transformed[dbCol]) {
-            transformed.year = parseInt(transformed[dbCol].split('-')[0]);
-            transformed.month = getMonth(transformed[dbCol]);
-            transformed.quarter = getQuarter(transformed[dbCol]);
+          // 디버깅: 처음 3행의 날짜 파싱 결과 로깅
+          if (index < 3 && dbCol === 'invoice_date') {
+            console.log(`📅 Row ${index + 1} date parsing:`, {
+              excelCol,
+              rawValue: value,
+              rawType: typeof value,
+              isDate: value instanceof Date,
+              parsedDate,
+            });
+          }
+          
+          // invoice_date에서 year, month, quarter 추출
+          if (dbCol === 'invoice_date' && parsedDate) {
+            transformed.year = getYear(parsedDate);
+            transformed.month = getMonth(parsedDate);
+            transformed.quarter = getQuarter(transformed.month);
           }
         } else if (numericColumns.includes(dbCol)) {
           const numValue = parseNumeric(value);
@@ -548,10 +594,12 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Industry가 NULL이면 'Other'로 설정
       if (!transformed.industry || transformed.industry === null || transformed.industry === '') {
         transformed.industry = 'Other';
       }
 
+      // Channel 계산 - group 값이 있으면 항상 계산
       const channel = calculateChannel(
         entity,
         transformed.group || null,
@@ -561,6 +609,7 @@ export async function POST(request: NextRequest) {
         transformed.channel = channel;
       }
 
+      // Item Mapping 적용
       if (requiresItemMapping && transformed.item_number) {
         const normalizedItemNumber = transformed.item_number.toString().trim();
         if (normalizedItemNumber) {
@@ -584,6 +633,19 @@ export async function POST(request: NextRequest) {
 
       return transformed;
     });
+
+    // 변환된 데이터 샘플 로깅
+    if (transformedData.length > 0) {
+      console.log('📊 Transformed data sample (first row):', {
+        entity: transformedData[0].entity,
+        year: transformedData[0].year,
+        month: transformedData[0].month,
+        quarter: transformedData[0].quarter,
+        invoice_date: transformedData[0].invoice_date,
+        group: transformedData[0].group,
+        channel: transformedData[0].channel,
+      });
+    }
 
     // 9. Insert data in batches
     const BATCH_SIZE = 250;
@@ -838,6 +900,7 @@ function getDefaultColumnMapping(): { [key: string]: string } {
     'Customer invoice account': 'customer_invoice_account',
     'Invoice account': 'invoice_account',
     'Group': 'group',
+    'Customer Group': 'group',
     'Currency': 'currency',
     'Invoice Amount': 'invoice_amount',
     'Invoice Amount_MST': 'invoice_amount_mst',

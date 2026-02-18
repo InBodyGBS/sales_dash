@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Entity } from '@/lib/types/sales';
 import { ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface DashboardFiltersProps {
   year: string;
@@ -27,7 +27,7 @@ interface DashboardFiltersProps {
   onCountriesChange: (countries: string[]) => void;
   onFGChange: (fg: string) => void;
   disableEntitySelection?: boolean;
-  entity?: Entity; // 단일 entity (entity별 대시보드용)
+  entity?: Entity;
 }
 
 export function DashboardFilters({
@@ -46,13 +46,30 @@ export function DashboardFilters({
 }: DashboardFiltersProps) {
   const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [availableCountries, setAvailableCountries] = useState<string[]>([]);
+  const [allEntities, setAllEntities] = useState<Entity[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const hasAutoSetYear = useRef(false);
+
+  // DB에서 모든 Entity 목록 가져오기
+  useEffect(() => {
+    const fetchEntities = async () => {
+      try {
+        const res = await fetch('/api/entities');
+        const data = await res.json();
+        const entitiesList = data.entities || [];
+        console.log('Fetched entities from DB:', entitiesList);
+        setAllEntities(entitiesList);
+      } catch (error) {
+        console.error('Failed to fetch entities:', error);
+        setAllEntities([]);
+      }
+    };
+    fetchEntities();
+  }, []);
 
   useEffect(() => {
     const fetchYears = async () => {
       try {
-        // entity가 있으면 entity별 years 가져오기, 없으면 전체 years 가져오기
-        // entities 배열이 있고 하나만 있으면 그것을 사용
         const entityParam = entity || (entities.length === 1 ? entities[0] : null);
         const url = entityParam ? `/api/years?entity=${entityParam}` : '/api/years';
         console.log('Fetching years from:', url, 'entity:', entityParam, 'entities:', entities);
@@ -69,30 +86,40 @@ export function DashboardFilters({
 
     fetchYears();
     fetchCountries();
-  }, [entity, entities]); // entity 또는 entities가 변경되면 years 다시 가져오기
+    hasAutoSetYear.current = false;
+  }, [entity, entities]);
+  
+  useEffect(() => {
+    if ((!year || year.trim() === '') && availableYears.length > 0 && !hasAutoSetYear.current) {
+      console.log('Auto-setting year to first available:', availableYears[0]);
+      onYearChange(String(availableYears[0]));
+      hasAutoSetYear.current = true;
+    }
+  }, [availableYears, year, onYearChange]);
 
   const fetchCountries = async () => {
     try {
-      // This would fetch from an API endpoint
-      // For now, we'll leave it empty
       setAvailableCountries([]);
     } catch (error) {
       console.error('Failed to fetch countries:', error);
     }
   };
 
-  const allEntities: Entity[] = ['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China'];
-  const isAllSelected = entities.length === allEntities.length;
+  const isAllSelected = allEntities.length > 0 && entities.length === allEntities.length;
 
-  const handleEntityToggle = (entity: Entity) => {
-    if (entity === 'All' || isAllSelected && entity === allEntities[0]) {
-      onEntitiesChange(isAllSelected ? [] : allEntities);
+  const handleEntityToggle = (entityToToggle: Entity) => {
+    if (entities.includes(entityToToggle)) {
+      onEntitiesChange(entities.filter((e) => e !== entityToToggle));
     } else {
-      if (entities.includes(entity)) {
-        onEntitiesChange(entities.filter((e) => e !== entity));
-      } else {
-        onEntitiesChange([...entities, entity]);
-      }
+      onEntitiesChange([...entities, entityToToggle]);
+    }
+  };
+
+  const handleSelectAll = () => {
+    if (isAllSelected) {
+      onEntitiesChange([]);
+    } else {
+      onEntitiesChange(allEntities);
     }
   };
 
@@ -132,29 +159,34 @@ export function DashboardFilters({
         {!disableEntitySelection ? (
           <div className="space-y-2">
             <Label>Entities</Label>
-            <div className="space-y-2 max-h-40 overflow-y-auto border rounded-md p-2">
+            <div className="space-y-2 max-h-60 overflow-y-auto border rounded-md p-2">
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="entity-all"
                   checked={isAllSelected}
-                  onCheckedChange={() => onEntitiesChange(isAllSelected ? [] : allEntities)}
+                  onCheckedChange={handleSelectAll}
                 />
-                <label htmlFor="entity-all" className="text-sm cursor-pointer">
+                <label htmlFor="entity-all" className="text-sm cursor-pointer font-medium">
                   All
                 </label>
               </div>
-              {allEntities.map((entity) => (
-                <div key={entity} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`entity-${entity}`}
-                    checked={entities.includes(entity)}
-                    onCheckedChange={() => handleEntityToggle(entity)}
-                  />
-                  <label htmlFor={`entity-${entity}`} className="text-sm cursor-pointer">
-                    {entity}
-                  </label>
-                </div>
-              ))}
+              <div className="border-t my-2" />
+              {allEntities.length > 0 ? (
+                allEntities.map((ent) => (
+                  <div key={ent} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`entity-${ent}`}
+                      checked={entities.includes(ent)}
+                      onCheckedChange={() => handleEntityToggle(ent)}
+                    />
+                    <label htmlFor={`entity-${ent}`} className="text-sm cursor-pointer">
+                      {ent}
+                    </label>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">Loading entities...</p>
+              )}
             </div>
           </div>
         ) : (
@@ -186,7 +218,7 @@ export function DashboardFilters({
             <div className="mt-4 space-y-4">
               <div className="space-y-2">
                 <Label>Quarter</Label>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   {['All', 'Q1', 'Q2', 'Q3', 'Q4'].map((q) => (
                     <Button
                       key={q}
@@ -202,7 +234,7 @@ export function DashboardFilters({
 
               <div className="space-y-2">
                 <Label>FG</Label>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   {['All', 'FG', 'NonFG'].map((f) => (
                     <Button
                       key={f}
