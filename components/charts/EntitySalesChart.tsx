@@ -83,7 +83,14 @@ export function EntitySalesChart({ data, loading }: EntitySalesChartProps) {
         <ResponsiveContainer width="100%" height={400}>
           <BarChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="entity" />
+            <XAxis 
+              dataKey="entity" 
+              angle={-45}
+              textAnchor="end"
+              height={80}
+              interval={0}
+              tick={{ fontSize: 12 }}
+            />
             <YAxis tickFormatter={formatYAxis} width={60} />
             <Tooltip
               formatter={(value: number, name: string) => {

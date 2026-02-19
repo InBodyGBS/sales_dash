@@ -6,6 +6,7 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const year = searchParams.get('year');
+    const quarter = searchParams.get('quarter') || 'All';
 
     if (!year) {
       return NextResponse.json(
@@ -21,6 +22,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase.rpc('get_inbody_group_monthly_trend', {
       p_year: yearInt,
       p_prev_year: prevYear,
+      p_quarter: quarter === 'All' ? null : quarter,
     });
 
     if (error) {

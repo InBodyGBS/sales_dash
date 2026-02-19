@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const year = searchParams.get('year');
     const limit = parseInt(searchParams.get('limit') || '10');
+    const quarter = searchParams.get('quarter') || 'All';
 
     if (!year) {
       return NextResponse.json(
@@ -22,6 +23,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase.rpc('get_inbody_group_top_products', {
       p_year: yearInt,
       p_limit: 1000, // Get more products for category filtering
+      p_quarter: quarter === 'All' ? null : quarter,
     });
 
     if (error) {

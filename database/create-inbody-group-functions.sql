@@ -20,7 +20,13 @@ INSERT INTO entity_currency (entity, currency) VALUES
 ('India', 'INR'),
 ('Mexico', 'MXN'),
 ('BWA', 'USD'),
-('Oceania', 'AUD')
+('Oceania', 'AUD'),
+('Singapore', 'SGD'),
+('Asia', 'MYR'),
+('Europe', 'EUR'),
+('Netherlands', 'EUR'),
+('Germany', 'EUR'),
+('UK', 'EUR')
 ON CONFLICT (entity) DO UPDATE SET currency = EXCLUDED.currency;
 
 -- 권한 부여
@@ -29,9 +35,12 @@ GRANT SELECT ON entity_currency TO authenticated, anon, service_role;
 -- ============================================
 -- 2. InBody Group 대시보드 요약 함수
 -- ============================================
+DROP FUNCTION IF EXISTS get_inbody_group_summary CASCADE;
+
 CREATE OR REPLACE FUNCTION get_inbody_group_summary(
     p_year INTEGER,
-    p_prev_year INTEGER DEFAULT NULL
+    p_prev_year INTEGER DEFAULT NULL,
+    p_quarter TEXT DEFAULT NULL
 )
 RETURNS JSON AS $$
 DECLARE
@@ -41,6 +50,7 @@ BEGIN
         SELECT 
             s.entity,
             s.year,
+            s.quarter,
             s.total_amount,
             s.row_count,
             -- Amount(KRW) 계산: HQ, Korot, Healthcare는 그대로, 나머지는 환율 적용
@@ -52,6 +62,7 @@ BEGIN
         LEFT JOIN entity_currency ec ON s.entity = ec.entity
         LEFT JOIN exchange_rate e ON s.year = e.year AND ec.currency = e.currency
         WHERE (s.channel IS NULL OR s.channel != 'Inter-Company')
+          AND (p_quarter IS NULL OR p_quarter = 'All' OR s.quarter = p_quarter)
     ),
     current_year_stats AS (
         SELECT 
@@ -91,14 +102,17 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE;
 
-GRANT EXECUTE ON FUNCTION get_inbody_group_summary TO authenticated, anon, service_role;
+GRANT EXECUTE ON FUNCTION get_inbody_group_summary(INTEGER, INTEGER, TEXT) TO authenticated, anon, service_role;
 
 -- ============================================
 -- 3. InBody Group 월별 추이 (KRW)
 -- ============================================
+DROP FUNCTION IF EXISTS get_inbody_group_monthly_trend CASCADE;
+
 CREATE OR REPLACE FUNCTION get_inbody_group_monthly_trend(
     p_year INTEGER,
-    p_prev_year INTEGER DEFAULT NULL
+    p_prev_year INTEGER DEFAULT NULL,
+    p_quarter TEXT DEFAULT NULL
 )
 RETURNS JSON AS $$
 BEGIN
@@ -127,6 +141,7 @@ BEGIN
                 WHERE s.year = p_year
                     AND s.month IS NOT NULL
                     AND (s.channel IS NULL OR s.channel != 'Inter-Company')
+                    AND (p_quarter IS NULL OR p_quarter = 'All' OR s.quarter = p_quarter)
                 GROUP BY month
             ) c
             FULL OUTER JOIN (
@@ -145,6 +160,7 @@ BEGIN
                 WHERE s.year = p_prev_year
                     AND s.month IS NOT NULL
                     AND (s.channel IS NULL OR s.channel != 'Inter-Company')
+                    AND (p_quarter IS NULL OR p_quarter = 'All' OR s.quarter = p_quarter)
                     AND p_prev_year IS NOT NULL
                 GROUP BY month
             ) p ON c.month = p.month
@@ -153,7 +169,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE;
 
-GRANT EXECUTE ON FUNCTION get_inbody_group_monthly_trend TO authenticated, anon, service_role;
+GRANT EXECUTE ON FUNCTION get_inbody_group_monthly_trend(INTEGER, INTEGER, TEXT) TO authenticated, anon, service_role;
 
 -- ============================================
 -- 4. InBody Group 분기별 비교 (KRW)
@@ -220,8 +236,11 @@ GRANT EXECUTE ON FUNCTION get_inbody_group_quarterly TO authenticated, anon, ser
 -- ============================================
 -- 5. InBody Group Entity별 매출 (KRW)
 -- ============================================
+DROP FUNCTION IF EXISTS get_inbody_group_entity_sales CASCADE;
+
 CREATE OR REPLACE FUNCTION get_inbody_group_entity_sales(
-    p_year INTEGER
+    p_year INTEGER,
+    p_quarter TEXT DEFAULT NULL
 )
 RETURNS JSON AS $$
 BEGIN
@@ -246,20 +265,24 @@ BEGIN
             LEFT JOIN exchange_rate e ON s.year = e.year AND ec.currency = e.currency
             WHERE s.year = p_year
                 AND (s.channel IS NULL OR s.channel != 'Inter-Company')
+                AND (p_quarter IS NULL OR p_quarter = 'All' OR s.quarter = p_quarter)
             GROUP BY s.entity
         ) entity_data
     );
 END;
 $$ LANGUAGE plpgsql STABLE;
 
-GRANT EXECUTE ON FUNCTION get_inbody_group_entity_sales TO authenticated, anon, service_role;
+GRANT EXECUTE ON FUNCTION get_inbody_group_entity_sales(INTEGER, TEXT) TO authenticated, anon, service_role;
 
 -- ============================================
 -- 6. InBody Group 상위 제품 (KRW)
 -- ============================================
+DROP FUNCTION IF EXISTS get_inbody_group_top_products CASCADE;
+
 CREATE OR REPLACE FUNCTION get_inbody_group_top_products(
     p_year INTEGER,
-    p_limit INTEGER DEFAULT 10
+    p_limit INTEGER DEFAULT 10,
+    p_quarter TEXT DEFAULT NULL
 )
 RETURNS JSON AS $$
 BEGIN
@@ -284,6 +307,7 @@ BEGIN
             WHERE s.year = p_year
                 AND (s.channel IS NULL OR s.channel != 'Inter-Company')
                 AND s.fg_classification = 'FG'
+                AND (p_quarter IS NULL OR p_quarter = 'All' OR s.quarter = p_quarter)
             GROUP BY s.product, s.category, s.fg_classification
             ORDER BY COALESCE(SUM(
                 CASE 
@@ -297,14 +321,18 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE;
 
-GRANT EXECUTE ON FUNCTION get_inbody_group_top_products TO authenticated, anon, service_role;
+GRANT EXECUTE ON FUNCTION get_inbody_group_top_products(INTEGER, INTEGER, TEXT) TO authenticated, anon, service_role;
 
 -- ============================================
 -- 7. InBody Group 산업별 분석 (KRW)
 -- ============================================
+-- Drop all overloaded versions of this function
+DROP FUNCTION IF EXISTS get_inbody_group_industry CASCADE;
+
 CREATE OR REPLACE FUNCTION get_inbody_group_industry(
     p_year INTEGER,
-    p_entities TEXT[] DEFAULT NULL
+    p_entities TEXT[] DEFAULT NULL,
+    p_quarter TEXT DEFAULT NULL
 )
 RETURNS JSON AS $$
 BEGIN
@@ -330,19 +358,23 @@ BEGIN
             WHERE s.year = p_year
                 AND (s.channel IS NULL OR s.channel != 'Inter-Company')
                 AND (p_entities IS NULL OR s.entity = ANY(p_entities))
+                AND (p_quarter IS NULL OR p_quarter = 'All' OR s.quarter = p_quarter)
             GROUP BY s.industry
         ) industry_data
     );
 END;
 $$ LANGUAGE plpgsql STABLE;
 
-GRANT EXECUTE ON FUNCTION get_inbody_group_industry TO authenticated, anon, service_role;
+GRANT EXECUTE ON FUNCTION get_inbody_group_industry(INTEGER, TEXT[], TEXT) TO authenticated, anon, service_role;
 
 -- ============================================
 -- 8. InBody Group FG Classification 분포 (KRW)
 -- ============================================
+DROP FUNCTION IF EXISTS get_inbody_group_fg_distribution CASCADE;
+
 CREATE OR REPLACE FUNCTION get_inbody_group_fg_distribution(
-    p_year INTEGER
+    p_year INTEGER,
+    p_quarter TEXT DEFAULT NULL
 )
 RETURNS JSON AS $$
 BEGIN
@@ -367,13 +399,14 @@ BEGIN
             LEFT JOIN exchange_rate e ON s.year = e.year AND ec.currency = e.currency
             WHERE s.year = p_year
                 AND (s.channel IS NULL OR s.channel != 'Inter-Company')
+                AND (p_quarter IS NULL OR p_quarter = 'All' OR s.quarter = p_quarter)
             GROUP BY s.fg_classification
         ) fg_data
     );
 END;
 $$ LANGUAGE plpgsql STABLE;
 
-GRANT EXECUTE ON FUNCTION get_inbody_group_fg_distribution TO authenticated, anon, service_role;
+GRANT EXECUTE ON FUNCTION get_inbody_group_fg_distribution(INTEGER, TEXT) TO authenticated, anon, service_role;
 
 -- ============================================
 -- 9. InBody Group 국가별 매출 (KRW) - DISABLED

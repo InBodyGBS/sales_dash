@@ -232,7 +232,8 @@ export function DashboardFilters({
                 </div>
               </div>
 
-              <div className="space-y-2">
+              {/* FG filter hidden as per requirements */}
+              {/* <div className="space-y-2">
                 <Label>FG</Label>
                 <div className="flex gap-2 flex-wrap">
                   {['All', 'FG', 'NonFG'].map((f) => (
@@ -246,7 +247,7 @@ export function DashboardFilters({
                     </Button>
                   ))}
                 </div>
-              </div>
+              </div> */}
 
               <Button
                 variant="outline"

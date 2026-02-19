@@ -97,18 +97,70 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// PUT: Update a single exchange rate
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { id, year, currency, rate } = body;
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'ID is required' },
+        { status: 400 }
+      );
+    }
+
+    const supabase = createServiceClient();
+
+    const { data, error } = await supabase
+      .from('exchange_rate')
+      .update({ year, currency, rate, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select();
+
+    if (error) {
+      throw error;
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Exchange rate updated successfully',
+      data: data?.[0],
+    });
+  } catch (error) {
+    console.error('Error updating exchange rate:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to update exchange rate',
+        details: (error as Error).message,
+      },
+      { status: 500 }
+    );
+  }
+}
+
 // DELETE: Delete exchange rates
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
     const year = searchParams.get('year');
 
     const supabase = createServiceClient();
 
     let query = supabase.from('exchange_rate').delete();
 
-    if (year) {
+    // Delete by ID if provided, otherwise by year
+    if (id) {
+      query = query.eq('id', parseInt(id));
+    } else if (year) {
       query = query.eq('year', parseInt(year));
+    } else {
+      return NextResponse.json(
+        { error: 'Either id or year parameter is required' },
+        { status: 400 }
+      );
     }
 
     const { error } = await query;
@@ -119,7 +171,9 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: year ? `Successfully deleted rates for year ${year}` : 'Successfully deleted all rates',
+      message: id 
+        ? 'Successfully deleted exchange rate'
+        : `Successfully deleted rates for year ${year}`,
     });
   } catch (error) {
     console.error('Error deleting exchange rates:', error);

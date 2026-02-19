@@ -213,11 +213,12 @@ GRANT EXECUTE ON FUNCTION get_quarterly_comparison TO authenticated, anon, servi
 -- ============================================
 -- 6. get_channel_sales - 채널별 매출
 -- ============================================
-DROP FUNCTION IF EXISTS get_channel_sales(INTEGER, TEXT[]);
+DROP FUNCTION IF EXISTS get_channel_sales CASCADE;
 
 CREATE OR REPLACE FUNCTION get_channel_sales(
     p_year INTEGER,
-    p_entities TEXT[] DEFAULT NULL
+    p_entities TEXT[] DEFAULT NULL,
+    p_quarter TEXT DEFAULT NULL
 )
 RETURNS JSON AS $$
 BEGIN
@@ -237,6 +238,7 @@ BEGIN
             FROM mv_sales_cube
             WHERE year = p_year
                 AND (p_entities IS NULL OR entity = ANY(p_entities))
+                AND (p_quarter IS NULL OR p_quarter = 'All' OR quarter = p_quarter)
             GROUP BY channel
         ) channel_data
     );

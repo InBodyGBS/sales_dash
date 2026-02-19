@@ -1,11 +1,6 @@
--- Add Channel column to sales_data table
--- This column will be automatically calculated based on entity, group, and invoice_account
+-- Update calculate_channel function to support Japan and other entities
+-- This adds logic to map group column directly to channel for Japan, China, India, Mexico, Oceania, Singapore, Asia, Netherlands, Germany, UK, Europe
 
--- Step 1: Add the Channel column
-ALTER TABLE sales_data 
-ADD COLUMN IF NOT EXISTS channel VARCHAR(50);
-
--- Step 2: Create a function to calculate Channel value
 CREATE OR REPLACE FUNCTION calculate_channel(
     p_entity VARCHAR(50),
     p_group VARCHAR(100),
@@ -156,38 +151,30 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Step 3: Update existing records with calculated Channel values
+-- Update existing records for Japan and other entities
 UPDATE sales_data
 SET channel = calculate_channel(entity, "group", invoice_account)
-WHERE channel IS NULL OR channel != calculate_channel(entity, "group", invoice_account);
+WHERE entity IN ('Japan', 'China', 'India', 'Mexico', 'Oceania', 'Singapore', 'Asia', 'Netherlands', 'Germany', 'UK', 'Europe')
+  AND (channel IS NULL OR channel != calculate_channel(entity, "group", invoice_account));
 
--- Step 4: Create a trigger to automatically update Channel when entity, group, or invoice_account changes
-CREATE OR REPLACE FUNCTION update_channel_on_change()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.channel := calculate_channel(NEW.entity, NEW."group", NEW.invoice_account);
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Drop trigger if exists
-DROP TRIGGER IF EXISTS trigger_update_channel ON sales_data;
-
--- Create trigger
-CREATE TRIGGER trigger_update_channel
-    BEFORE INSERT OR UPDATE OF entity, "group", invoice_account ON sales_data
-    FOR EACH ROW
-    EXECUTE FUNCTION update_channel_on_change();
-
--- Step 5: Create index for better query performance
-CREATE INDEX IF NOT EXISTS idx_sales_channel ON sales_data(channel);
-
--- Step 6: Verify the update
--- Check how many records were updated and their distribution
+-- Verify the update
 SELECT 
     entity,
     channel,
     COUNT(*) as record_count
 FROM sales_data
+WHERE entity IN ('Japan', 'China', 'India', 'Mexico', 'Oceania', 'Singapore', 'Asia', 'Netherlands', 'Germany', 'UK', 'Europe')
 GROUP BY entity, channel
 ORDER BY entity, channel;
+
+-- Check if any Japan records have NULL channel
+SELECT 
+    entity,
+    "group",
+    COUNT(*) as null_channel_count
+FROM sales_data
+WHERE entity = 'Japan'
+  AND channel IS NULL
+GROUP BY entity, "group"
+ORDER BY null_channel_count DESC;
+

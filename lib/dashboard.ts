@@ -38,7 +38,8 @@ export async function getDashboardData(
   supabase: SupabaseClient<any, "public", any>,
   entity: string,
   year: number,
-  fgFilter?: string | null
+  fgFilter?: string | null,
+  quarter?: string | null
 ): Promise<DashboardData> {
   // Europe은 API 라우트에서 직접 처리되므로, RPC 호출 전에 확인
   if (entity === 'Europe') {
@@ -49,6 +50,7 @@ export async function getDashboardData(
     p_entity: entity,
     p_year: year,
     p_fg: fgFilter ?? null,
+    p_quarter: quarter && quarter !== 'All' ? quarter : null,
   });
 
   if (error) {

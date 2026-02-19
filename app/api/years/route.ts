@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
 
     // RPC 함수 호출
     const { data, error } = await supabase.rpc('get_distinct_years', {
-      p_entity: entity || null
+      entity_name: entity || null
     });
 
     if (error) {

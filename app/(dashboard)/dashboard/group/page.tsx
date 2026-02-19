@@ -7,6 +7,7 @@ import { KPICards } from '@/components/dashboard/KPICards';
 import { MonthlyTrendChart } from '@/components/charts/MonthlyTrendChart';
 import { QuarterlyComparisonChart } from '@/components/charts/QuarterlyComparisonChart';
 import { FGDistributionChart } from '@/components/charts/FGDistributionChart';
+import { ChannelSalesChart } from '@/components/charts/ChannelSalesChart';
 import { EntitySalesChart } from '@/components/charts/EntitySalesChart';
 import { CountrySalesChart } from '@/components/charts/CountrySalesChart';
 import { TopProductsChart } from '@/components/charts/TopProductsChart';
@@ -33,6 +34,7 @@ export default function InBodyGroupDashboardPage() {
   const [monthlyTrend, setMonthlyTrend] = useState<any[]>([]);
   const [quarterlyComparison, setQuarterlyComparison] = useState<any[]>([]);
   const [fgDistribution, setFGDistribution] = useState<any[]>([]);
+  const [channelSales, setChannelSales] = useState<any[]>([]);
   const [entitySales, setEntitySales] = useState<any[]>([]);
   const [countrySales, setCountrySales] = useState<any[]>([]);
   const [topProducts, setTopProducts] = useState<any>({ byAmount: [], byQuantity: [], categories: [], allProducts: [] });
@@ -68,53 +70,79 @@ export default function InBodyGroupDashboardPage() {
       console.log(`📊 Fetching InBody Group dashboard data (KRW) for year: ${yearInt}`);
       
       // Fetch all data in parallel using new InBody Group APIs
+      const quarterParam = quarter && quarter !== 'All' ? `&quarter=${quarter}` : '';
       const [
         summaryRes,
         monthlyRes,
         quarterlyRes,
         entitySalesRes,
+        channelSalesRes,
         fgDistributionRes,
         countrySalesRes,
         topProductsRes,
         industryRes,
       ] = await Promise.all([
-        fetch(`/api/dashboard/inbody-group/summary?year=${yearInt}`),
-        fetch(`/api/dashboard/inbody-group/monthly-trend?year=${yearInt}`),
+        fetch(`/api/dashboard/inbody-group/summary?year=${yearInt}${quarterParam}`),
+        fetch(`/api/dashboard/inbody-group/monthly-trend?year=${yearInt}${quarterParam}`),
         fetch(`/api/dashboard/inbody-group/quarterly?year=${yearInt}`),
-        fetch(`/api/dashboard/inbody-group/entity-sales?year=${yearInt}`),
-        fetch(`/api/dashboard/inbody-group/fg-distribution?year=${yearInt}`),
+        fetch(`/api/dashboard/inbody-group/entity-sales?year=${yearInt}${quarterParam}`),
+        fetch(`/api/dashboard/channel-sales?year=${yearInt}&entities=${entities.join(',')}&limit=10${quarterParam}`),
+        fetch(`/api/dashboard/inbody-group/fg-distribution?year=${yearInt}${quarterParam}`),
         fetch(`/api/dashboard/inbody-group/country-sales?year=${yearInt}`),
-        fetch(`/api/dashboard/inbody-group/top-products?year=${yearInt}&limit=10`),
-        fetch(`/api/dashboard/inbody-group/industry?year=${yearInt}`),
+        fetch(`/api/dashboard/inbody-group/top-products?year=${yearInt}&limit=10${quarterParam}`),
+        fetch(`/api/dashboard/inbody-group/industry?year=${yearInt}${quarterParam}`),
       ]);
+
+      // Check for errors first
+      const responses = [
+        { name: 'summary', res: summaryRes },
+        { name: 'monthly', res: monthlyRes },
+        { name: 'quarterly', res: quarterlyRes },
+        { name: 'entitySales', res: entitySalesRes },
+        { name: 'channelSales', res: channelSalesRes },
+        { name: 'fgDistribution', res: fgDistributionRes },
+        { name: 'countrySales', res: countrySalesRes },
+        { name: 'topProducts', res: topProductsRes },
+        { name: 'industry', res: industryRes },
+      ];
+
+      for (const { name, res } of responses) {
+        if (!res.ok) {
+          const errorText = await res.text();
+          console.error(`❌ ${name} API error (${res.status}):`, errorText);
+        }
+      }
 
       const [
         summary,
         monthly,
         quarterly,
         entitySalesData,
+        channelSalesData,
         fgData,
         countryData,
         topProductsData,
         industryData,
       ] = await Promise.all([
-        summaryRes.json(),
-        monthlyRes.json(),
-        quarterlyRes.json(),
-        entitySalesRes.json(),
-        fgDistributionRes.json(),
-        countrySalesRes.json(),
-        topProductsRes.json(),
-        industryRes.json(),
+        summaryRes.ok ? summaryRes.json() : null,
+        monthlyRes.ok ? monthlyRes.json() : [],
+        quarterlyRes.ok ? quarterlyRes.json() : [],
+        entitySalesRes.ok ? entitySalesRes.json() : [],
+        channelSalesRes.ok ? channelSalesRes.json() : [],
+        fgDistributionRes.ok ? fgDistributionRes.json() : [],
+        countrySalesRes.ok ? countrySalesRes.json() : [],
+        topProductsRes.ok ? topProductsRes.json() : { byAmount: [], byQuantity: [], categories: [], allProducts: [] },
+        industryRes.ok ? industryRes.json() : [],
       ]);
 
       console.log(`✅ InBody Group dashboard data received (KRW):`, {
         current_amount_krw: summary?.current_year?.total_amount_krw,
         previous_amount_krw: summary?.previous_year?.total_amount_krw,
-        monthly_count: monthly?.length,
-        monthly_sample: monthly?.slice(0, 2),
-        quarterly_count: quarterly?.length,
-        entities_count: entitySalesData?.length,
+        monthly_type: Array.isArray(monthly) ? 'array' : typeof monthly,
+        monthly_count: Array.isArray(monthly) ? monthly.length : 0,
+        monthly_sample: Array.isArray(monthly) ? monthly.slice(0, 2) : monthly,
+        quarterly_count: Array.isArray(quarterly) ? quarterly.length : 0,
+        entities_count: Array.isArray(entitySalesData) ? entitySalesData.length : 0,
       });
       
       // Transform data for KPI cards
@@ -137,54 +165,67 @@ export default function InBodyGroupDashboardPage() {
         },
       });
       
-      // Monthly trend data
-      setMonthlyTrend(monthly?.map((item: any) => ({
+      // Monthly trend data - ensure it's an array
+      const monthlyArray = Array.isArray(monthly) ? monthly : [];
+      setMonthlyTrend(monthlyArray.map((item: any) => ({
         month: item.month,
         amount: item.amount,
         quantity: item.quantity,
         prevAmount: item.prev_amount,
         prevQuantity: item.prev_quantity,
-      })) || []);
+      })));
       
-      // Quarterly data
-      setQuarterlyComparison(quarterly?.map((item: any) => ({
+      // Quarterly data - ensure it's an array
+      const quarterlyArray = Array.isArray(quarterly) ? quarterly : [];
+      setQuarterlyComparison(quarterlyArray.map((item: any) => ({
         quarter: item.quarter, // SQL에서 이미 "Q1", "Q2" 형식으로 반환됨
         currentYear: item.current_amount || 0,
         previousYear: item.previous_amount || 0,
         currentQuantity: item.current_quantity || 0,
         previousQuantity: item.previous_quantity || 0,
-      })) || []);
+      })));
       
-      // FG distribution
-      setFGDistribution(fgData?.map((item: any) => ({
+      // FG distribution - ensure it's an array
+      const fgArray = Array.isArray(fgData) ? fgData : [];
+      setFGDistribution(fgArray.map((item: any) => ({
         fg_classification: item.fg_classification,
         amount: item.amount,
         quantity: item.quantity,
-      })) || []);
+      })));
       
-      // Entity sales
-      setEntitySales(entitySalesData?.map((item: any) => ({
+      // Channel sales - ensure it's an array
+      const channelArray = Array.isArray(channelSalesData) ? channelSalesData : [];
+      setChannelSales(channelArray.map((item: any) => ({
+        channel: item.channel,
+        amount: item.amount,
+      })));
+      
+      // Entity sales - ensure it's an array
+      const entityArray = Array.isArray(entitySalesData) ? entitySalesData : [];
+      setEntitySales(entityArray.map((item: any) => ({
         entity: item.entity,
         amount: item.amount,
         quantity: item.quantity,
-      })) || []);
+      })));
       
-      // Country sales
-      setCountrySales(countryData?.map((item: any) => ({
+      // Country sales - ensure it's an array
+      const countryArray = Array.isArray(countryData) ? countryData : [];
+      setCountrySales(countryArray.map((item: any) => ({
         country: item.country,
         amount: item.amount,
         quantity: item.quantity,
-      })) || []);
+      })));
       
       // Top products - API에서 이미 HQ 형식으로 반환됨 (byAmount, byQuantity, categories, allProducts)
       setTopProducts(topProductsData || { byAmount: [], byQuantity: [], categories: [], allProducts: [] });
       
-      // Industry breakdown
-      setIndustryBreakdown(industryData?.map((item: any) => ({
+      // Industry breakdown - ensure it's an array
+      const industryArray = Array.isArray(industryData) ? industryData : [];
+      setIndustryBreakdown(industryArray.map((item: any) => ({
         industry: item.industry,
         amount: item.amount,
         quantity: item.quantity,
-      })) || []);
+      })));
       
     } catch (error) {
       toast.error('Failed to load dashboard data');
@@ -271,7 +312,7 @@ export default function InBodyGroupDashboardPage() {
             <EntitySalesChart data={entitySales} loading={loading} />
           </div>
 
-          {/* Quarterly Comparison and Country Sales Section */}
+          {/* Quarterly Comparison and Channel Sales Section */}
           <div className="grid gap-6 md:grid-cols-2">
             <QuarterlyComparisonChart
               data={quarterlyComparison}
@@ -279,11 +320,14 @@ export default function InBodyGroupDashboardPage() {
               loading={loading}
               entity="All"
             />
-            <CountrySalesChart data={countrySales} loading={loading} entity="All" />
+            <ChannelSalesChart data={channelSales} loading={loading} entity="All" />
           </div>
 
-          {/* FG Distribution */}
-          <FGDistributionChart data={fgDistribution} loading={loading} />
+          {/* Country Sales and FG Distribution Section */}
+          <div className="grid gap-6 md:grid-cols-2">
+            <CountrySalesChart data={countrySales} loading={loading} entity="All" />
+            <FGDistributionChart data={fgDistribution} loading={loading} />
+          </div>
           
           {/* Top Products Section */}
           <TopProductsChart data={topProducts} loading={loading} entity="All" />

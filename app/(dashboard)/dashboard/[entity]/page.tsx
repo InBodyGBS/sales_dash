@@ -134,14 +134,15 @@ export default function EntityDashboardPage() {
       const entityParam = entity;
       const yearInt = parseInt(year);
       const fgFilter = fg && fg !== 'All' ? fg : null;
+      const quarterFilter = quarter && quarter !== 'All' ? quarter : null;
       
-      console.log(`📊 Fetching dashboard data via RPC for year: ${yearInt}, entity: ${entityParam}, fg: ${fgFilter}`);
+      console.log(`📊 Fetching dashboard data via RPC for year: ${yearInt}, entity: ${entityParam}, fg: ${fgFilter}, quarter: ${quarterFilter}`);
       
       // Create Supabase client
       const supabase = createClient();
       
       // Single RPC call to get all dashboard data
-      const dashboardData = await getDashboardData(supabase, entityParam, yearInt, fgFilter);
+      const dashboardData = await getDashboardData(supabase, entityParam, yearInt, fgFilter, quarterFilter);
       
       console.log(`✅ Dashboard data received via RPC:`, {
         year: yearInt,
@@ -203,8 +204,22 @@ export default function EntityDashboardPage() {
       const quarterlyData = transformQuarterly(dashboardData.quarterly, yearInt);
       setQuarterlyComparison(quarterlyData);
       
+      // Fetch channel sales with all filters
+      const channelParams = new URLSearchParams({
+        year: String(yearInt),
+        entities: entityParam,
+        limit: '10',
+        quarter: quarter || 'All',
+      });
+      const channelRes = await fetch(`/api/dashboard/channel-sales?${channelParams}`);
+      if (channelRes.ok) {
+        const channelData = await channelRes.json();
+        setChannelSales(channelData);
+      } else {
+        setChannelSales([]);
+      }
+      
       // Set other data directly from RPC response
-      setChannelSales(dashboardData.channels);
       const topProductsData = transformTopProducts(dashboardData);
       setTopProducts(topProductsData);
       

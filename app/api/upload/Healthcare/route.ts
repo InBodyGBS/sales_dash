@@ -92,11 +92,21 @@ function getQuarter(dateStr: string | null): string | null {
 
 // Channel 계산 함수
 function calculateChannel(entity: string, group: string | null, invoiceAccount: string | null): string | null {
-  if (!entity || !group) return null;
+  if (!entity) return null;
   
   const entityUpper = entity.toUpperCase();
   const groupStr = group?.toString().trim() || '';
   const invoiceAccountStr = invoiceAccount?.toString().trim() || '';
+
+  // 이 엔티티들은 group 값을 그대로 channel로 사용 (group이 비어있어도 체크)
+  // Japan, Oceania, India, Mexico, Netherlands, Germany, UK, Asia, Europe, Singapore, China
+  if (['OCEANIA', 'INDIA', 'JAPAN', 'MEXICO', 'NETHERLANDS', 'GERMANY', 'UK', 'ASIA', 'EUROPE', 'SINGAPORE', 'CHINA'].includes(entityUpper)) {
+    // group이 있으면 그대로 channel로 사용, 없으면 null
+    return groupStr || null;
+  }
+
+  // group이 비어있으면 null 반환 (위 엔티티들 제외)
+  if (!groupStr) return null;
 
   // HQ entity
   if (entityUpper === 'HQ') {

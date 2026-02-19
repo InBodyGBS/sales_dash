@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
     const year = searchParams.get('year');
     const limit = parseInt(searchParams.get('limit') || '10');
     const entities = searchParams.get('entities')?.split(',').filter(Boolean) || [];
+    const quarter = searchParams.get('quarter') || 'All';
 
     if (!year) {
       return NextResponse.json(
@@ -28,7 +29,8 @@ export async function GET(request: NextRequest) {
     // RPC 함수 호출
     const { data, error } = await supabase.rpc('get_channel_sales', {
       p_year: yearInt,
-      p_entities: entities.length > 0 && !entities.includes('All') ? entities : null
+      p_entities: entities.length > 0 && !entities.includes('All') ? entities : null,
+      p_quarter: quarter === 'All' ? null : quarter,
     });
 
     if (error) {
