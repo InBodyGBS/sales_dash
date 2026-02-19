@@ -252,7 +252,7 @@ export default function InBodyGroupDashboardPage() {
             onQuarterChange={setQuarter}
             onCountriesChange={setCountries}
             onFGChange={setFG}
-            disableEntitySelection={false}
+            disableEntitySelection={true}
           />
         </div>
 

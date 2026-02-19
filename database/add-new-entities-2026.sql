@@ -22,7 +22,8 @@ INSERT INTO entity_currency (entity, currency) VALUES
 ('Germany', 'EUR'),
 ('UK', 'EUR'),
 ('Asia', 'MYR'),  -- Asia는 MYR, SGD 혼용 (주 통화: MYR)
-('Europe', 'EUR')
+('Europe', 'EUR'),
+('Singapore', 'SGD')
 ON CONFLICT (entity) DO UPDATE SET currency = EXCLUDED.currency;
 
 -- 2. Exchange Rate 테이블 확인 (필요시 추가)
@@ -99,7 +100,7 @@ BEGIN
     -- 새 CHECK 제약 조건 추가 (새 entity 포함)
     ALTER TABLE item_mapping 
     ADD CONSTRAINT valid_entity_item_mapping 
-    CHECK (entity IN ('HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe'));
+    CHECK (entity IN ('HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe', 'Singapore'));
     
     RAISE NOTICE '✅ item_mapping: 새 CHECK 제약 조건이 추가되었습니다 (새 entity 포함).';
 END $$;

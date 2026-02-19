@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     const supabase = createServiceClient();
 
     // Entities that require item mapping
-    const entitiesRequiringItemMapping = ['Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe'];
+    const entitiesRequiringItemMapping = ['Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe', 'Singapore'];
     const requiresItemMapping = entitiesRequiringItemMapping.includes(entity);
 
     // 3.1. Load item mapping with fallback logic
@@ -419,7 +419,7 @@ export async function POST(request: NextRequest) {
       }
 
       // 이 엔티티들은 group 값을 그대로 channel로 사용
-      if (['OCEANIA', 'INDIA', 'JAPAN', 'MEXICO', 'NETHERLANDS', 'GERMANY', 'UK', 'ASIA', 'EUROPE'].includes(entityUpper)) {
+      if (['OCEANIA', 'INDIA', 'JAPAN', 'MEXICO', 'NETHERLANDS', 'GERMANY', 'UK', 'ASIA', 'EUROPE', 'SINGAPORE'].includes(entityUpper)) {
         return groupStr || null;
       }
 

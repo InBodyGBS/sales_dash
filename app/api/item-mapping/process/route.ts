@@ -375,7 +375,29 @@ export async function POST(request: NextRequest) {
         message: error.message,
         details: error.details,
         hint: error.hint,
+        entity: entity,
       });
+      
+      // Handle constraint violation error (23514 - check constraint violation)
+      if (error.code === '23514' || error.message?.includes('check constraint') || error.message?.includes('valid_entity_item_mapping')) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Entity constraint violation',
+            details: `Entity '${entity}'가 item_mapping 테이블의 constraint에 포함되어 있지 않습니다.\n\n` +
+                     `에러: ${error.message}\n\n` +
+                     `해결 방법:\n` +
+                     `1. Supabase SQL Editor에서 다음 SQL을 실행하세요:\n\n` +
+                     `ALTER TABLE item_mapping DROP CONSTRAINT IF EXISTS valid_entity_item_mapping;\n` +
+                     `ALTER TABLE item_mapping ADD CONSTRAINT valid_entity_item_mapping ` +
+                     `CHECK (entity IN ('HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe', 'Singapore'));\n\n` +
+                     `또는 database/add-new-entities-2026.sql 파일을 실행하세요.`,
+            errorCode: error.code,
+            errorHint: error.hint,
+          },
+          { status: 500 }
+        );
+      }
       
       // Handle duplicate key error (21000)
       if (error.code === '21000' || error.message?.includes('duplicate constrained values') || error.message?.includes('cannot affect row a second time')) {

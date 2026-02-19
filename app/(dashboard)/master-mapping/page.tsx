@@ -37,7 +37,7 @@ interface ExchangeRate {
   rate: number;
 }
 
-const ENTITIES_REQUIRING_MAPPING: Entity[] = ['Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia'];
+const ENTITIES_REQUIRING_MAPPING: Entity[] = ['Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Singapore'];
 const CURRENCIES = ['USD', 'JPY', 'CNH', 'CNY', 'MXN', 'VND', 'INR', 'AUD', 'EUR', 'GBP', 'MYR', 'SGD', 'TRY', 'KRW'];
 
 export default function MasterMappingPage() {

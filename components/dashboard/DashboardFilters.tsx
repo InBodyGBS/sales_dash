@@ -140,7 +140,7 @@ export function DashboardFilters({
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="year">Year</Label>
-          <Select value={year} onValueChange={onYearChange} disabled={availableYears.length === 0}>
+          <Select value={year || undefined} onValueChange={onYearChange} disabled={availableYears.length === 0}>
             <SelectTrigger id="year">
               <SelectValue placeholder={availableYears.length === 0 ? "Loading years..." : "Select year"} />
             </SelectTrigger>

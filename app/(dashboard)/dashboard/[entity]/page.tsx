@@ -35,6 +35,7 @@ const ENTITY_DISPLAY_NAMES = {
   UK: 'UK',
   Asia: 'Asia',
   Europe: 'Europe',
+  Singapore: 'Singapore',
   All: 'All',
 } as const;
 
@@ -159,6 +160,27 @@ export default function EntityDashboardPage() {
         ? ((dashboardData.total_amount - dashboardData.prev_year_amount) / dashboardData.prev_year_amount) * 100
         : 0;
       
+      // For Asia entity, fetch currency breakdown
+      let currencyBreakdown: any[] | undefined = undefined;
+      if (entityParam === 'Asia') {
+        try {
+          console.log(`🔄 Fetching currency breakdown for Asia, year: ${yearInt}`);
+          const currencyRes = await fetch(`/api/dashboard/currency-summary?year=${yearInt}&entity=${entityParam}`);
+          console.log(`📡 Currency summary API response status: ${currencyRes.status}`);
+          if (currencyRes.ok) {
+            const currencyData = await currencyRes.json();
+            currencyBreakdown = currencyData.currencyBreakdown || [];
+            console.log(`✅ Currency breakdown for Asia:`, currencyBreakdown);
+            console.log(`📊 Currency breakdown length: ${currencyBreakdown.length}`);
+          } else {
+            const errorText = await currencyRes.text();
+            console.error(`❌ Currency summary API failed: ${currencyRes.status}`, errorText);
+          }
+        } catch (error) {
+          console.error('❌ Failed to fetch currency breakdown:', error);
+        }
+      }
+      
       setKpiData({
         totalAmount: dashboardData.total_amount,
         totalQty: 0, // RPC에서 제공되지 않으면 0
@@ -170,6 +192,7 @@ export default function EntityDashboardPage() {
           amount: amountChange,
           qty: 0,
         },
+        currencyBreakdown,
       });
       
       // Transform monthly trend data

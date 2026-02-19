@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DollarSign, Package, TrendingUp, FileText, ArrowUp, ArrowDown } from 'lucide-react';
-import { formatCurrency, formatNumber, formatKRW, formatVND, formatJPY, formatCNH, formatMXN, formatINR, formatAUD } from '@/lib/utils/formatters';
+import { formatCurrency, formatNumber, formatKRW, formatVND, formatJPY, formatCNH, formatMXN, formatINR, formatAUD, formatMYR, formatSGD } from '@/lib/utils/formatters';
 import { Entity } from '@/lib/types/sales';
 
 interface KPICardsProps {
@@ -17,6 +17,14 @@ interface KPICardsProps {
       amount: number;
       qty: number;
     };
+    currencyBreakdown?: Array<{
+      currency: string;
+      currentAmount: number;
+      previousAmount: number;
+      comparison: {
+        amount: number;
+      };
+    }>;
   } | null;
   loading?: boolean;
   entity?: Entity;
@@ -31,6 +39,7 @@ export function KPICards({ data, loading, entity }: KPICardsProps) {
   const isINREntity = entity === 'India';
   const isAUDEntity = entity === 'Oceania';
   const isEUREntity = entity && ['Netherlands', 'Germany', 'UK', 'Europe'].includes(entity);
+  const isAsiaEntity = entity === 'Asia';
   
   if (loading) {
     return (
@@ -261,6 +270,58 @@ export function KPICards({ data, loading, entity }: KPICardsProps) {
         </Card>
       </div>
     );
+  }
+
+  // For Asia: show Total Amount by currency (MYR, SGD)
+  if (isAsiaEntity) {
+    // If currency breakdown is available, show by currency
+    if (data.currencyBreakdown && data.currencyBreakdown.length > 0) {
+      const getCurrencyFormatter = (currency: string) => {
+        switch (currency) {
+          case 'MYR':
+            return formatMYR;
+          case 'SGD':
+            return formatSGD;
+          default:
+            return (amount: number) => formatCurrency(amount, currency);
+        }
+      };
+
+      return (
+        <div className="grid gap-4 md:grid-cols-2">
+          {data.currencyBreakdown.map((item) => {
+            const formatter = getCurrencyFormatter(item.currency);
+            return (
+              <Card key={item.currency}>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Total Amount ({item.currency})</CardTitle>
+                  <DollarSign className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{formatter(item.currentAmount)}</div>
+                  {item.previousAmount > 0 && (
+                    <div className="text-sm text-muted-foreground mt-1">
+                      Previous year: {formatter(item.previousAmount)}
+                    </div>
+                  )}
+                  <div className={`flex items-center text-xs mt-1 ${item.comparison.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {item.comparison.amount >= 0 ? (
+                      <ArrowUp className="h-3 w-3 mr-1" />
+                    ) : (
+                      <ArrowDown className="h-3 w-3 mr-1" />
+                    )}
+                    <span>{Math.abs(item.comparison.amount).toFixed(1)}% vs previous period</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Total sales amount ({item.currency})</p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      );
+    }
+    // If currency breakdown is not available, show loading or fallback
+    console.warn('Asia entity but currencyBreakdown is not available:', data.currencyBreakdown);
   }
 
   // For other entities, show only Total Amount with appropriate currency format
