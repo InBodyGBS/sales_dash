@@ -15,53 +15,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = createServiceClient();
     const yearInt = parseInt(year);
-    
     if (isNaN(yearInt)) {
       return NextResponse.json(
-        { error: 'Invalid year parameter', details: `Year "${year}" is not a valid number` },
+        { error: 'Invalid year parameter' },
         { status: 400 }
       );
     }
 
-    const isEurope = entities.includes('Europe');
-    console.log(`📊 Channel Sales API - Request:`, { year: yearInt, limit, entities, isEurope });
+    const supabase = createServiceClient();
 
-    // Europe 특별 처리: sales_data_europe View 사용
-    if (isEurope) {
-      console.log('🌍 Europe entity detected - querying sales_data_europe view');
-      try {
-        const { data: europeData, error: europeError } = await supabase
-          .from('sales_data_europe')
-          .select('channel, line_amount_mst')
-          .eq('year', yearInt);
-
-        if (europeError) {
-          console.error('❌ Europe channel sales error:', europeError);
-          return NextResponse.json({ error: 'Failed to fetch Europe channel sales', details: europeError.message }, { status: 500 });
-        }
-
-        const channelMap = new Map<string, number>();
-        (europeData || []).forEach((r: any) => {
-          const ch = r.channel || 'Unknown';
-          channelMap.set(ch, (channelMap.get(ch) || 0) + (Number(r.line_amount_mst) || 0));
-        });
-
-        const result = Array.from(channelMap.entries())
-          .map(([channel, amount]) => ({ channel, amount }))
-          .sort((a, b) => b.amount - a.amount)
-          .slice(0, limit);
-
-        console.log(`✅ Europe channel sales fetched: ${result.length} channels`);
-        return NextResponse.json(result);
-      } catch (europeErr) {
-        console.error('Europe channel sales exception:', europeErr);
-        return NextResponse.json({ error: 'Failed to fetch Europe channel sales', details: String(europeErr) }, { status: 500 });
-      }
-    }
-
-    // RPC 함수 호출 (mv_sales_cube 사용, 훨씬 빠름)
+    // RPC 함수 호출
     const { data, error } = await supabase.rpc('get_channel_sales', {
       p_year: yearInt,
       p_entities: entities.length > 0 && !entities.includes('All') ? entities : null
@@ -75,20 +39,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!data || data.length === 0) {
-      return NextResponse.json([]);
-    }
-
-    console.log(`✅ Channel Sales API - Success:`, { 
-      channels: data.length,
-      year: yearInt,
-      entities: entities.join(',') || 'All'
-    });
-
-    // limit 적용 후 반환
-    const result = data.slice(0, limit).map((item: any) => ({
+    // 기존 API 형식에 맞게 변환 (channel, amount)
+    const result = (data || []).slice(0, limit).map((item: any) => ({
       channel: item.channel,
-      amount: item.amount,
+      amount: item.total_amount,
     }));
 
     return NextResponse.json(result);
