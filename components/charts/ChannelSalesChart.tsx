@@ -17,7 +17,8 @@ interface ChannelSalesChartProps {
 }
 
 export function ChannelSalesChart({ data, loading, entity }: ChannelSalesChartProps) {
-  const isKRWEntity = entity && ['HQ', 'Healthcare', 'Korot'].includes(entity);
+  // Group 대시보드(entity="All")에서는 KRW로 표시
+  const isKRWEntity = entity === 'All' || (entity && ['HQ', 'Healthcare', 'Korot'].includes(entity));
   const isVNDEntity = entity === 'Vietnam';
   const isJPYEntity = entity === 'Japan';
   const isCNHEntity = entity === 'China';

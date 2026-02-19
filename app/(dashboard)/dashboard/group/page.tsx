@@ -26,6 +26,7 @@ export default function InBodyGroupDashboardPage() {
   const [year, setYear] = useState<string>('');
   const [entities, setEntities] = useState<Entity[]>(ENTITIES);
   const [quarter, setQuarter] = useState<string>('All');
+  const [month, setMonth] = useState<string | null>(null);
   const [countries, setCountries] = useState<string[]>([]);
   const [fg, setFG] = useState<string>('All');
   
@@ -48,7 +49,7 @@ export default function InBodyGroupDashboardPage() {
     if (year) {
       fetchAllData();
     }
-  }, [year, entities, quarter, countries, fg]);
+  }, [year, entities, quarter, month, countries, fg]);
 
   const fetchYears = async () => {
     try {
@@ -71,6 +72,7 @@ export default function InBodyGroupDashboardPage() {
       
       // Fetch all data in parallel using new InBody Group APIs
       const quarterParam = quarter && quarter !== 'All' ? `&quarter=${quarter}` : '';
+      const monthParam = month ? `&month=${month}` : '';
       const [
         summaryRes,
         monthlyRes,
@@ -82,15 +84,15 @@ export default function InBodyGroupDashboardPage() {
         topProductsRes,
         industryRes,
       ] = await Promise.all([
-        fetch(`/api/dashboard/inbody-group/summary?year=${yearInt}${quarterParam}`),
-        fetch(`/api/dashboard/inbody-group/monthly-trend?year=${yearInt}${quarterParam}`),
+        fetch(`/api/dashboard/inbody-group/summary?year=${yearInt}${quarterParam}${monthParam}`),
+        fetch(`/api/dashboard/inbody-group/monthly-trend?year=${yearInt}`), // Monthly Trend는 필터 적용 안 함
         fetch(`/api/dashboard/inbody-group/quarterly?year=${yearInt}`),
-        fetch(`/api/dashboard/inbody-group/entity-sales?year=${yearInt}${quarterParam}`),
-        fetch(`/api/dashboard/channel-sales?year=${yearInt}&entities=${entities.join(',')}&limit=10${quarterParam}`),
-        fetch(`/api/dashboard/inbody-group/fg-distribution?year=${yearInt}${quarterParam}`),
+        fetch(`/api/dashboard/inbody-group/entity-sales?year=${yearInt}${quarterParam}${monthParam}`),
+        fetch(`/api/dashboard/inbody-group/channel-sales?year=${yearInt}&entities=${entities.join(',')}&limit=10${quarterParam}${monthParam}`),
+        fetch(`/api/dashboard/inbody-group/category-distribution?year=${yearInt}${quarterParam}${monthParam}`),
         fetch(`/api/dashboard/inbody-group/country-sales?year=${yearInt}`),
-        fetch(`/api/dashboard/inbody-group/top-products?year=${yearInt}&limit=10${quarterParam}`),
-        fetch(`/api/dashboard/inbody-group/industry?year=${yearInt}${quarterParam}`),
+        fetch(`/api/dashboard/inbody-group/top-products?year=${yearInt}&limit=10${quarterParam}${monthParam}`),
+        fetch(`/api/dashboard/inbody-group/industry?year=${yearInt}${quarterParam}${monthParam}`),
       ]);
 
       // Check for errors first
@@ -185,19 +187,21 @@ export default function InBodyGroupDashboardPage() {
         previousQuantity: item.previous_quantity || 0,
       })));
       
-      // FG distribution - ensure it's an array
-      const fgArray = Array.isArray(fgData) ? fgData : [];
-      setFGDistribution(fgArray.map((item: any) => ({
-        fg_classification: item.fg_classification,
+      // Category distribution - ensure it's an array
+      const categoryArray = Array.isArray(fgData) ? fgData : [];
+      setFGDistribution(categoryArray.map((item: any) => ({
+        category: item.category,
         amount: item.amount,
         quantity: item.quantity,
+        percentage: item.percentage,
       })));
       
       // Channel sales - ensure it's an array
       const channelArray = Array.isArray(channelSalesData) ? channelSalesData : [];
+      console.log('📊 Channel Sales Data:', channelArray);
       setChannelSales(channelArray.map((item: any) => ({
         channel: item.channel,
-        amount: item.amount,
+        amount: item.amount || 0,
       })));
       
       // Entity sales - ensure it's an array
@@ -286,11 +290,13 @@ export default function InBodyGroupDashboardPage() {
             year={year}
             entities={entities}
             quarter={quarter}
+            month={month}
             countries={countries}
             fg={fg}
             onYearChange={setYear}
             onEntitiesChange={setEntities}
             onQuarterChange={setQuarter}
+            onMonthChange={setMonth}
             onCountriesChange={setCountries}
             onFGChange={setFG}
             disableEntitySelection={true}
@@ -326,7 +332,7 @@ export default function InBodyGroupDashboardPage() {
           {/* Country Sales and FG Distribution Section */}
           <div className="grid gap-6 md:grid-cols-2">
             <CountrySalesChart data={countrySales} loading={loading} entity="All" />
-            <FGDistributionChart data={fgDistribution} loading={loading} />
+            <FGDistributionChart data={fgDistribution} loading={loading} entity="All" showCategory={true} />
           </div>
           
           {/* Top Products Section */}

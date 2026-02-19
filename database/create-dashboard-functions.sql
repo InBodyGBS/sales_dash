@@ -218,7 +218,8 @@ DROP FUNCTION IF EXISTS get_channel_sales CASCADE;
 CREATE OR REPLACE FUNCTION get_channel_sales(
     p_year INTEGER,
     p_entities TEXT[] DEFAULT NULL,
-    p_quarter TEXT DEFAULT NULL
+    p_quarter TEXT DEFAULT NULL,
+    p_month INTEGER DEFAULT NULL
 )
 RETURNS JSON AS $$
 BEGIN
@@ -239,13 +240,15 @@ BEGIN
             WHERE year = p_year
                 AND (p_entities IS NULL OR entity = ANY(p_entities))
                 AND (p_quarter IS NULL OR p_quarter = 'All' OR quarter = p_quarter)
+                AND (p_month IS NULL OR month = p_month)
+                AND (channel IS NULL OR channel != 'Inter-Company')
             GROUP BY channel
         ) channel_data
     );
 END;
 $$ LANGUAGE plpgsql STABLE;
 
-GRANT EXECUTE ON FUNCTION get_channel_sales TO authenticated, anon, service_role;
+GRANT EXECUTE ON FUNCTION get_channel_sales(INTEGER, TEXT[], TEXT, INTEGER) TO authenticated, anon, service_role;
 
 -- ============================================
 -- 7. get_industry_breakdown - 산업별 분석

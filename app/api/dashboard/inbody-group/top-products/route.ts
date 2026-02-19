@@ -8,6 +8,7 @@ export async function GET(request: NextRequest) {
     const year = searchParams.get('year');
     const limit = parseInt(searchParams.get('limit') || '10');
     const quarter = searchParams.get('quarter') || 'All';
+    const month = searchParams.get('month');
 
     if (!year) {
       return NextResponse.json(
@@ -18,12 +19,14 @@ export async function GET(request: NextRequest) {
 
     const supabase = createServiceClient();
     const yearInt = parseInt(year);
+    const monthInt = month ? parseInt(month) : null;
 
     // Get all products (no limit) to enable category filtering
     const { data, error } = await supabase.rpc('get_inbody_group_top_products', {
       p_year: yearInt,
       p_limit: 1000, // Get more products for category filtering
       p_quarter: quarter === 'All' ? null : quarter,
+      p_month: monthInt,
     });
 
     if (error) {

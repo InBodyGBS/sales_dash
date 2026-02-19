@@ -19,11 +19,13 @@ interface DashboardFiltersProps {
   year: string;
   entities: Entity[];
   quarter: string;
+  month: string | null;
   countries: string[];
   fg: string;
   onYearChange: (year: string) => void;
   onEntitiesChange: (entities: Entity[]) => void;
   onQuarterChange: (quarter: string) => void;
+  onMonthChange: (month: string | null) => void;
   onCountriesChange: (countries: string[]) => void;
   onFGChange: (fg: string) => void;
   disableEntitySelection?: boolean;
@@ -34,11 +36,13 @@ export function DashboardFilters({
   year,
   entities,
   quarter,
+  month,
   countries,
   fg,
   onYearChange,
   onEntitiesChange,
   onQuarterChange,
+  onMonthChange,
   onCountriesChange,
   onFGChange,
   disableEntitySelection = false,
@@ -127,6 +131,7 @@ export function DashboardFilters({
     onYearChange('');
     onEntitiesChange([]);
     onQuarterChange('All');
+    onMonthChange(null);
     onCountriesChange([]);
     onFGChange('All');
   };
@@ -156,7 +161,7 @@ export function DashboardFilters({
           </Select>
         </div>
 
-        {!disableEntitySelection ? (
+        {!disableEntitySelection && (
           <div className="space-y-2">
             <Label>Entities</Label>
             <div className="space-y-2 max-h-60 overflow-y-auto border rounded-md p-2">
@@ -187,16 +192,6 @@ export function DashboardFilters({
               ) : (
                 <p className="text-sm text-muted-foreground">Loading entities...</p>
               )}
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <Label>Entity</Label>
-            <div className="p-3 border rounded-md bg-muted">
-              <p className="text-sm font-medium">{entities[0] || 'N/A'}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Entity is fixed for this dashboard
-              </p>
             </div>
           </div>
         )}
@@ -230,6 +225,26 @@ export function DashboardFilters({
                     </Button>
                   ))}
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Month</Label>
+                <Select 
+                  value={month || 'All'} 
+                  onValueChange={(value) => onMonthChange(value === 'All' ? null : value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All</SelectItem>
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                      <SelectItem key={m} value={String(m)}>
+                        {m}월
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* FG filter hidden as per requirements */}
