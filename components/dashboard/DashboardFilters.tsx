@@ -118,7 +118,7 @@ export function DashboardFilters({
   const handleSelectAll = () => {
     if (isAllSelected) {
       onEntitiesChange([]);
-    } else {
+      } else {
       onEntitiesChange(allEntities);
     }
   };
@@ -174,15 +174,15 @@ export function DashboardFilters({
               {allEntities.length > 0 ? (
                 allEntities.map((ent) => (
                   <div key={ent} className="flex items-center space-x-2">
-                    <Checkbox
+                  <Checkbox
                       id={`entity-${ent}`}
                       checked={entities.includes(ent)}
                       onCheckedChange={() => handleEntityToggle(ent)}
-                    />
+                  />
                     <label htmlFor={`entity-${ent}`} className="text-sm cursor-pointer">
                       {ent}
-                    </label>
-                  </div>
+                  </label>
+                </div>
                 ))
               ) : (
                 <p className="text-sm text-muted-foreground">Loading entities...</p>

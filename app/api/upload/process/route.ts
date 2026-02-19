@@ -665,59 +665,173 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 8.5. 중복 제거 (모든 entity에 적용)
-    console.log(`🔍 Checking for duplicates in ${transformedData.length} rows for entity: ${entity}...`);
+    // 8.5. 중복 검증 (entity 그룹별로 다른 로직 적용)
+    // 그룹 1: HQ, Korot, Healthcare, USA, BWA, Vietnam → 기존 키 기반 중복 제거
+    // 그룹 2: 나머지 entity (Japan, China, India, Mexico, ...) → invoice + customer_invoice_account + 합계 기반 중복 차단
+    const GROUP1_ENTITIES = ['HQ', 'Korot', 'Healthcare', 'USA', 'BWA', 'Vietnam'];
+    const isGroup1 = GROUP1_ENTITIES.includes(entity);
+
+    console.log(`🔍 [${entity}] Duplicate check mode: ${isGroup1 ? 'GROUP1 (key-based)' : 'GROUP2 (invoice+amount-based)'}`);
     const originalCount = transformedData.length;
-    
-    // Step 1: 파일 내 중복 제거 (모든 entity에 적용)
-    const uniqueMap = new Map<string, any>();
-    const duplicateKeys: string[] = [];
-    let duplicateCount = 0;
-    
-    transformedData.forEach((row) => {
-      // 고유 키 생성: entity + invoice + invoice_date + item_number + line_number
-      // line_number가 null일 수 있으므로 처리
-      const lineNumber = row.line_number !== null && row.line_number !== undefined 
-        ? String(row.line_number) 
-        : 'NULL';
-      const key = `${row.entity}|${row.invoice || 'NULL'}|${row.invoice_date || 'NULL'}|${row.item_number || 'NULL'}|${lineNumber}`;
-      
-      if (uniqueMap.has(key)) {
-        duplicateKeys.push(key);
-        duplicateCount++;
-        // 처음 몇 개만 상세 로깅
-        if (duplicateCount <= 5) {
-          console.warn(`⚠️ Duplicate found in file (${entity}): ${key}`);
+    let deduplicatedData: any[] = [...transformedData];
+
+    if (isGroup1) {
+      // ─────────────────────────────────────────────────────────────
+      // 그룹 1: entity + invoice + invoice_date + item_number + line_number 키 기반 중복 제거
+      // ─────────────────────────────────────────────────────────────
+      const uniqueMap = new Map<string, any>();
+      let duplicateCount = 0;
+
+      transformedData.forEach((row) => {
+        const lineNumber = row.line_number !== null && row.line_number !== undefined
+          ? String(row.line_number)
+          : 'NULL';
+        const key = `${row.entity}|${row.invoice || 'NULL'}|${row.invoice_date || 'NULL'}|${row.item_number || 'NULL'}|${lineNumber}`;
+
+        if (uniqueMap.has(key)) {
+          duplicateCount++;
+          if (duplicateCount <= 5) {
+            console.warn(`⚠️ [${entity}] Duplicate in file: ${key}`);
+          }
+        } else {
+          uniqueMap.set(key, row);
+        }
+      });
+
+      deduplicatedData = Array.from(uniqueMap.values());
+      const fileDuplicatesRemoved = originalCount - deduplicatedData.length;
+
+      if (fileDuplicatesRemoved > 0) {
+        console.log(`🗑️ [${entity}] Removed ${fileDuplicatesRemoved} duplicate rows from file (${deduplicatedData.length} unique rows remaining)`);
+        if (duplicateCount > 5) {
+          console.log(`   ... and ${duplicateCount - 5} more duplicates`);
         }
       } else {
-        uniqueMap.set(key, row);
+        console.log(`✅ [${entity}] No duplicates found in file`);
       }
-    });
-    
-    let deduplicatedData = Array.from(uniqueMap.values());
-    const fileDuplicatesRemoved = originalCount - deduplicatedData.length;
-    
-    if (fileDuplicatesRemoved > 0) {
-      console.log(`🗑️ [${entity}] Removed ${fileDuplicatesRemoved} duplicate rows from file (${deduplicatedData.length} unique rows remaining)`);
-      if (duplicateCount > 5) {
-        console.log(`   ... and ${duplicateCount - 5} more duplicates`);
-      }
+
     } else {
-      console.log(`✅ [${entity}] No duplicates found in file`);
+      // ─────────────────────────────────────────────────────────────
+      // 그룹 2: invoice + customer_invoice_account + line_amount_mst 합계 기반 중복 차단
+      // ─────────────────────────────────────────────────────────────
+
+      // Step A: 파일 내에서 (invoice, customer_invoice_account) 그룹별 합계 계산
+      type InvoiceGroup = { invoice: string; customerInvoiceAccount: string; sum: number; rows: any[] };
+      const uploadGroupMap = new Map<string, InvoiceGroup>();
+
+      transformedData.forEach((row) => {
+        const inv = (row.invoice || '').toString().trim();
+        const acc = (row.customer_invoice_account || '').toString().trim();
+        const key = `${inv}|${acc}`;
+        const amount = parseFloat(row.line_amount_mst) || 0;
+
+        if (!uploadGroupMap.has(key)) {
+          uploadGroupMap.set(key, { invoice: inv, customerInvoiceAccount: acc, sum: 0, rows: [] });
+        }
+        const g = uploadGroupMap.get(key)!;
+        g.sum += amount;
+        g.rows.push(row);
+      });
+
+      const uploadGroups = Array.from(uploadGroupMap.values());
+      console.log(`📋 [${entity}] Upload file has ${uploadGroups.length} unique (invoice, customer_invoice_account) groups`);
+
+      // Step B: DB에서 동일 (entity, invoice) 조합의 기존 데이터 조회
+      const invoiceList = [...new Set(uploadGroups.map((g) => g.invoice).filter(Boolean))];
+
+      let dbGroupSums = new Map<string, number>(); // key: `invoice|account` → sum
+      if (invoiceList.length > 0) {
+        const { data: dbRows, error: dbError } = await supabase
+          .from('sales_data')
+          .select('invoice, customer_invoice_account, line_amount_mst')
+          .eq('entity', entity)
+          .in('invoice', invoiceList);
+
+        if (dbError) {
+          console.error(`❌ [${entity}] DB duplicate check query failed:`, dbError.message);
+          // DB 조회 실패 시 중복 차단 없이 진행
+        } else if (dbRows && dbRows.length > 0) {
+          console.log(`📊 [${entity}] Found ${dbRows.length} existing DB rows for ${invoiceList.length} invoices`);
+
+          // DB 행을 (invoice, customer_invoice_account) 그룹별로 합계 집계
+          dbRows.forEach((row: any) => {
+            const inv = (row.invoice || '').toString().trim();
+            const acc = (row.customer_invoice_account || '').toString().trim();
+            const key = `${inv}|${acc}`;
+            const amount = parseFloat(row.line_amount_mst) || 0;
+            dbGroupSums.set(key, (dbGroupSums.get(key) || 0) + amount);
+          });
+        } else {
+          console.log(`✅ [${entity}] No existing DB rows found for uploaded invoices → no duplicates`);
+        }
+      }
+
+      // Step C: 합계 비교 → 동일하면 해당 그룹을 중복으로 판단하고 제외
+      const blockedGroups: string[] = [];
+      const allowedRows: any[] = [];
+
+      uploadGroups.forEach((group) => {
+        const key = `${group.invoice}|${group.customerInvoiceAccount}`;
+        const dbSum = dbGroupSums.get(key) ?? null;
+
+        if (dbSum !== null && Math.abs(group.sum - dbSum) < 0.01) {
+          // 합계가 동일 → 중복으로 판단, 업로드 차단
+          blockedGroups.push(`invoice=${group.invoice}, account=${group.customerInvoiceAccount}, sum=${group.sum}`);
+          console.warn(`🚫 [${entity}] Duplicate group blocked: invoice=${group.invoice} account=${group.customerInvoiceAccount} uploadSum=${group.sum.toFixed(2)} dbSum=${dbSum.toFixed(2)}`);
+        } else {
+          // 합계가 다르거나 DB에 없음 → 새 데이터로 허용
+          if (dbSum !== null) {
+            console.log(`✅ [${entity}] New data (sum differs): invoice=${group.invoice} uploadSum=${group.sum.toFixed(2)} dbSum=${dbSum.toFixed(2)}`);
+          }
+          allowedRows.push(...group.rows);
+        }
+      });
+
+      if (blockedGroups.length > 0) {
+        console.log(`🚫 [${entity}] ${blockedGroups.length} duplicate invoice group(s) blocked. ${allowedRows.length} rows will be inserted.`);
+        if (blockedGroups.length > 0) {
+          console.log(`   Blocked groups (first 5):`, blockedGroups.slice(0, 5));
+        }
+      } else {
+        console.log(`✅ [${entity}] No duplicate invoice groups found → all ${allowedRows.length} rows will be inserted`);
+      }
+
+      deduplicatedData = allowedRows;
+
+      // 모든 그룹이 중복인 경우 조기 종료 (에러 반환)
+      if (deduplicatedData.length === 0 && originalCount > 0) {
+        console.warn(`🚫 [${entity}] All uploaded data is duplicate. Upload blocked.`);
+        
+        // 히스토리 업데이트 (실패 상태)
+        if (historyId) {
+          await supabase
+            .from('upload_history')
+            .update({
+              status: 'failed',
+              error_message: `중복 데이터: 업로드한 모든 invoice 그룹이 이미 DB에 동일한 합계로 존재합니다. (${blockedGroups.length}개 그룹 차단)`,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', historyId);
+        }
+
+        return NextResponse.json(
+          {
+            success: false,
+            error: '중복 데이터 감지',
+            message: `업로드한 모든 데이터가 이미 DB에 존재합니다. (${blockedGroups.length}개 invoice 그룹이 동일한 합계로 차단됨)`,
+            blockedGroups: blockedGroups.slice(0, 10),
+          },
+          { status: 409 }
+        );
+      }
     }
 
-    // Step 2: DB에 이미 존재하는 중복 체크 (모든 entity에 적용)
-    // Note: DB unique constraint가 있으면 자동으로 중복을 막지만, 
-    // 미리 체크하면 더 빠르고 명확한 에러 메시지를 제공할 수 있습니다.
-    // 현재는 파일 내 중복만 제거하고, DB 중복은 unique constraint로 처리합니다.
-    // 만약 unique constraint가 없다면, DB 중복 체크 로직을 활성화할 수 있습니다.
-    
     // 최종 통계
     const totalDuplicatesRemoved = originalCount - deduplicatedData.length;
     if (totalDuplicatesRemoved > 0) {
-      console.log(`📊 [${entity}] Duplicate removal summary: ${totalDuplicatesRemoved} duplicates removed from file (${deduplicatedData.length} unique rows to insert)`);
+      console.log(`📊 [${entity}] Duplicate removal summary: ${totalDuplicatesRemoved} rows removed/blocked (${deduplicatedData.length} rows to insert)`);
     }
-    
+
     // deduplicatedData를 transformedData로 교체
     transformedData.length = 0;
     transformedData.push(...deduplicatedData);
