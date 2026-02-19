@@ -36,6 +36,15 @@ export async function GET() {
         if (hasAllExpected && rpcEntities.length >= 11) {
           // RPC has all expected entities including China, use it
           console.log(`✅ RPC has all ${rpcEntities.length} expected entities including China`);
+          
+          // Add Europe if Netherlands, Germany, or UK exists
+          const europeSourceEntities = ['Netherlands', 'Germany', 'UK'];
+          const hasEuropeData = europeSourceEntities.some(e => rpcEntities.includes(e));
+          if (hasEuropeData && !rpcEntities.includes('Europe')) {
+            rpcEntities.push('Europe');
+            console.log('🌍 Added Europe entity (Netherlands, Germany, or UK has data)');
+          }
+          
           return NextResponse.json({ entities: rpcEntities.sort() });
         } else {
           const missingEntities = expectedEntities.filter(e => !rpcEntities.includes(e));
@@ -98,7 +107,17 @@ export async function GET() {
       }
     }
     
-    const entities = Array.from(entitySet).sort();
+    let entities = Array.from(entitySet);
+    
+    // Add Europe if Netherlands, Germany, or UK exists
+    const europeSourceEntities = ['Netherlands', 'Germany', 'UK'];
+    const hasEuropeData = europeSourceEntities.some(e => entities.includes(e));
+    if (hasEuropeData && !entities.includes('Europe')) {
+      entities.push('Europe');
+      console.log('🌍 Added Europe entity (Netherlands, Germany, or UK has data)');
+    }
+    
+    entities = entities.sort();
     
     const method = rpcEntities.length > 0 ? 'RPC + fallback' : 'fallback';
     console.log(`✅ Found ${entities.length} entities with data (${method}, ${page} pages):`, entities);

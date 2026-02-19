@@ -406,7 +406,14 @@ export async function POST(request: NextRequest) {
       const groupStr = group?.toString().trim() || '';
       const invoiceAccountStr = invoiceAccount?.toString().trim() || '';
 
-      // group이 비어있으면 null 반환 (일부 엔티티 제외)
+      // 이 엔티티들은 group 값을 그대로 channel로 사용 (group이 비어있어도 체크)
+      // Japan, Oceania, India, Mexico, Netherlands, Germany, UK, Asia, Europe, Singapore
+      if (['OCEANIA', 'INDIA', 'JAPAN', 'MEXICO', 'NETHERLANDS', 'GERMANY', 'UK', 'ASIA', 'EUROPE', 'SINGAPORE'].includes(entityUpper)) {
+        // group이 있으면 그대로 channel로 사용, 없으면 null
+        return groupStr || null;
+      }
+
+      // group이 비어있으면 null 반환 (위 엔티티들 제외)
       if (!groupStr) return null;
 
       if (entityUpper === 'CHINA') {
@@ -415,11 +422,6 @@ export async function POST(request: NextRequest) {
         } else if (groupStr === 'CG22') {
           return 'Inter-Company';
         }
-        return groupStr || null;
-      }
-
-      // 이 엔티티들은 group 값을 그대로 channel로 사용
-      if (['OCEANIA', 'INDIA', 'JAPAN', 'MEXICO', 'NETHERLANDS', 'GERMANY', 'UK', 'ASIA', 'EUROPE', 'SINGAPORE'].includes(entityUpper)) {
         return groupStr || null;
       }
 
@@ -600,13 +602,29 @@ export async function POST(request: NextRequest) {
       }
 
       // Channel 계산 - group 값이 있으면 항상 계산
+      // Japan, Oceania, India, Mexico, Netherlands, Germany, UK, Asia, Europe, Singapore의 경우
+      // group 값이 있으면 무조건 channel로 설정
       const channel = calculateChannel(
         entity,
         transformed.group || null,
         transformed.invoice_account || null
       );
-      if (channel) {
+      
+      // Japan 등 특정 entity는 group이 있으면 channel로 설정 (null이어도 명시적으로 설정)
+      const entitiesUsingGroupAsChannel = ['Japan', 'Oceania', 'India', 'Mexico', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe', 'Singapore'];
+      if (entitiesUsingGroupAsChannel.includes(entity) && transformed.group) {
+        transformed.channel = transformed.group.toString().trim() || channel || null;
+      } else if (channel) {
         transformed.channel = channel;
+      }
+      
+      // 디버깅: Japan의 경우 group과 channel 로깅
+      if (entity === 'Japan' && index < 3) {
+        console.log(`🇯🇵 Japan row ${index + 1} channel calculation:`, {
+          group: transformed.group,
+          calculatedChannel: channel,
+          finalChannel: transformed.channel,
+        });
       }
 
       // Item Mapping 적용
@@ -646,6 +664,63 @@ export async function POST(request: NextRequest) {
         channel: transformedData[0].channel,
       });
     }
+
+    // 8.5. 중복 제거 (모든 entity에 적용)
+    console.log(`🔍 Checking for duplicates in ${transformedData.length} rows for entity: ${entity}...`);
+    const originalCount = transformedData.length;
+    
+    // Step 1: 파일 내 중복 제거 (모든 entity에 적용)
+    const uniqueMap = new Map<string, any>();
+    const duplicateKeys: string[] = [];
+    let duplicateCount = 0;
+    
+    transformedData.forEach((row) => {
+      // 고유 키 생성: entity + invoice + invoice_date + item_number + line_number
+      // line_number가 null일 수 있으므로 처리
+      const lineNumber = row.line_number !== null && row.line_number !== undefined 
+        ? String(row.line_number) 
+        : 'NULL';
+      const key = `${row.entity}|${row.invoice || 'NULL'}|${row.invoice_date || 'NULL'}|${row.item_number || 'NULL'}|${lineNumber}`;
+      
+      if (uniqueMap.has(key)) {
+        duplicateKeys.push(key);
+        duplicateCount++;
+        // 처음 몇 개만 상세 로깅
+        if (duplicateCount <= 5) {
+          console.warn(`⚠️ Duplicate found in file (${entity}): ${key}`);
+        }
+      } else {
+        uniqueMap.set(key, row);
+      }
+    });
+    
+    let deduplicatedData = Array.from(uniqueMap.values());
+    const fileDuplicatesRemoved = originalCount - deduplicatedData.length;
+    
+    if (fileDuplicatesRemoved > 0) {
+      console.log(`🗑️ [${entity}] Removed ${fileDuplicatesRemoved} duplicate rows from file (${deduplicatedData.length} unique rows remaining)`);
+      if (duplicateCount > 5) {
+        console.log(`   ... and ${duplicateCount - 5} more duplicates`);
+      }
+    } else {
+      console.log(`✅ [${entity}] No duplicates found in file`);
+    }
+
+    // Step 2: DB에 이미 존재하는 중복 체크 (모든 entity에 적용)
+    // Note: DB unique constraint가 있으면 자동으로 중복을 막지만, 
+    // 미리 체크하면 더 빠르고 명확한 에러 메시지를 제공할 수 있습니다.
+    // 현재는 파일 내 중복만 제거하고, DB 중복은 unique constraint로 처리합니다.
+    // 만약 unique constraint가 없다면, DB 중복 체크 로직을 활성화할 수 있습니다.
+    
+    // 최종 통계
+    const totalDuplicatesRemoved = originalCount - deduplicatedData.length;
+    if (totalDuplicatesRemoved > 0) {
+      console.log(`📊 [${entity}] Duplicate removal summary: ${totalDuplicatesRemoved} duplicates removed from file (${deduplicatedData.length} unique rows to insert)`);
+    }
+    
+    // deduplicatedData를 transformedData로 교체
+    transformedData.length = 0;
+    transformedData.push(...deduplicatedData);
 
     // 9. Insert data in batches
     const BATCH_SIZE = 250;

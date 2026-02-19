@@ -25,7 +25,41 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log(`📊 Channel Sales API - Request:`, { year: yearInt, limit, entities });
+    const isEurope = entities.includes('Europe');
+    console.log(`📊 Channel Sales API - Request:`, { year: yearInt, limit, entities, isEurope });
+
+    // Europe 특별 처리: sales_data_europe View 사용
+    if (isEurope) {
+      console.log('🌍 Europe entity detected - querying sales_data_europe view');
+      try {
+        const { data: europeData, error: europeError } = await supabase
+          .from('sales_data_europe')
+          .select('channel, line_amount_mst')
+          .eq('year', yearInt);
+
+        if (europeError) {
+          console.error('❌ Europe channel sales error:', europeError);
+          return NextResponse.json({ error: 'Failed to fetch Europe channel sales', details: europeError.message }, { status: 500 });
+        }
+
+        const channelMap = new Map<string, number>();
+        (europeData || []).forEach((r: any) => {
+          const ch = r.channel || 'Unknown';
+          channelMap.set(ch, (channelMap.get(ch) || 0) + (Number(r.line_amount_mst) || 0));
+        });
+
+        const result = Array.from(channelMap.entries())
+          .map(([channel, amount]) => ({ channel, amount }))
+          .sort((a, b) => b.amount - a.amount)
+          .slice(0, limit);
+
+        console.log(`✅ Europe channel sales fetched: ${result.length} channels`);
+        return NextResponse.json(result);
+      } catch (europeErr) {
+        console.error('Europe channel sales exception:', europeErr);
+        return NextResponse.json({ error: 'Failed to fetch Europe channel sales', details: String(europeErr) }, { status: 500 });
+      }
+    }
 
     // RPC 함수 호출 (mv_sales_cube 사용, 훨씬 빠름)
     const { data, error } = await supabase.rpc('get_channel_sales', {

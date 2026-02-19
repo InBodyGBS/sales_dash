@@ -18,7 +18,8 @@ export async function GET(request: NextRequest) {
     const supabase = createServiceClient();
     const yearInt = parseInt(year);
     
-    console.log(`📊 Top Products API - Request params:`, { year, yearInt, limit, entities });
+    const isEurope = entities.includes('Europe');
+    console.log(`📊 Top Products API - Request params:`, { year, yearInt, limit, entities, isEurope });
     
     if (isNaN(yearInt)) {
       console.error(`❌ Top Products API - Invalid year parameter: "${year}"`);
@@ -26,6 +27,49 @@ export async function GET(request: NextRequest) {
         { error: 'Invalid year parameter', details: `Year "${year}" is not a valid number` },
         { status: 400 }
       );
+    }
+
+    // Europe 특별 처리: sales_data_europe View 사용
+    if (isEurope) {
+      console.log('🌍 Europe entity detected - querying sales_data_europe view for top products');
+      try {
+        const { data: europeData, error: europeError } = await supabase
+          .from('sales_data_europe')
+          .select('product_name, product, line_amount_mst, quantity, fg_classification, category')
+          .eq('year', yearInt)
+          .eq('fg_classification', 'FG');
+
+        if (europeError) {
+          console.error('❌ Europe top products error:', europeError);
+          return NextResponse.json({ byAmount: [], byQuantity: [], categories: [], allProducts: [] });
+        }
+
+        const productMap = new Map<string, { amount: number; qty: number; category: string | null }>();
+        (europeData || []).forEach((r: any) => {
+          const product = r.product || r.product_name || 'Unknown';
+          const existing = productMap.get(product) || { amount: 0, qty: 0, category: r.category || null };
+          existing.amount += Number(r.line_amount_mst) || 0;
+          existing.qty += Number(r.quantity) || 0;
+          if (!existing.category && r.category) existing.category = r.category;
+          productMap.set(product, existing);
+        });
+
+        const allProducts = Array.from(productMap.entries()).map(([product, d]) => ({ product, amount: d.amount, qty: d.qty, category: d.category }));
+        const categories = Array.from(new Set(allProducts.map(p => p.category).filter(Boolean) as string[])).sort();
+
+        const result = {
+          byAmount: [...allProducts].sort((a, b) => b.amount - a.amount).slice(0, limit),
+          byQuantity: [...allProducts].sort((a, b) => b.qty - a.qty).slice(0, limit),
+          categories,
+          allProducts,
+        };
+
+        console.log(`✅ Europe top products fetched: ${allProducts.length} products`);
+        return NextResponse.json(result);
+      } catch (europeErr) {
+        console.error('Europe top products exception:', europeErr);
+        return NextResponse.json({ byAmount: [], byQuantity: [], categories: [], allProducts: [] });
+      }
     }
 
     // 모든 데이터를 가져오기 위해 페이지네이션 처리

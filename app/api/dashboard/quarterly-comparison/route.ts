@@ -26,9 +26,48 @@ export async function GET(request: NextRequest) {
     }
     
     const previousYear = currentYear - 1;
+    const isEurope = entities.includes('Europe');
     
     // 디버깅: 받은 year 파라미터 확인
-    console.log(`📊 Quarterly Comparison API - Received year parameter: "${year}", parsed as: ${currentYear}, entities: ${entities.join(',')}`);
+    console.log(`📊 Quarterly Comparison API - Received year parameter: "${year}", parsed as: ${currentYear}, entities: ${entities.join(',')}, isEurope: ${isEurope}`);
+
+    // Europe 특별 처리: sales_data_europe View 사용
+    if (isEurope) {
+      console.log('🌍 Europe entity detected - querying sales_data_europe view');
+      try {
+        const fetchEuropeQuarterData = async (yr: number) => {
+          const { data, error } = await supabase
+            .from('sales_data_europe')
+            .select('quarter, line_amount_mst')
+            .eq('year', yr)
+            .not('quarter', 'is', null);
+          if (error) { console.error(`Europe quarterly error (year ${yr}):`, error); return []; }
+          return data || [];
+        };
+
+        const [currData, prevData] = await Promise.all([fetchEuropeQuarterData(currentYear), fetchEuropeQuarterData(previousYear)]);
+
+        const buildQuarterMap = (rows: any[]) => {
+          const map = new Map<string, number>();
+          rows.forEach((r: any) => {
+            const q = r.quarter || 'Q1';
+            map.set(q, (map.get(q) || 0) + (Number(r.line_amount_mst) || 0));
+          });
+          return map;
+        };
+
+        const currMap = buildQuarterMap(currData);
+        const prevMap = buildQuarterMap(prevData);
+        const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+        const result = quarters.map(q => ({ quarter: q, currentYear: currMap.get(q) || 0, previousYear: prevMap.get(q) || 0 }));
+
+        console.log(`✅ Europe quarterly comparison fetched`);
+        return NextResponse.json(result);
+      } catch (europeErr) {
+        console.error('Europe quarterly comparison exception:', europeErr);
+        return NextResponse.json({ error: 'Failed to fetch Europe quarterly comparison', details: String(europeErr) }, { status: 500 });
+      }
+    }
 
     // 모든 데이터를 가져오기 위해 페이지네이션 처리
     // Supabase PostgREST의 기본 max-rows 제한이 1000이므로 PAGE_SIZE를 1000으로 설정

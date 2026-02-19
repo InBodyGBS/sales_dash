@@ -29,12 +29,22 @@ export interface DashboardData {
 // ============================================
 // Fetch: 대시보드 전체 데이터 (단일 RPC 호출)
 // ============================================
+// Note: Europe entity는 특별 처리됩니다.
+// - 데이터 소스: sales_data_europe View (Netherlands, Germany, UK 중 channel != 'Inter-Company')
+// - 금액 컬럼: line_amount_mst 사용
+// - 실제 Europe 처리는 app/api/dashboard/* 라우트에서 수행됩니다.
+//   이 함수는 RPC를 호출하지만, Europe의 경우 API 라우트에서 직접 처리됩니다.
 export async function getDashboardData(
   supabase: SupabaseClient<any, "public", any>,
   entity: string,
   year: number,
   fgFilter?: string | null
 ): Promise<DashboardData> {
+  // Europe은 API 라우트에서 직접 처리되므로, RPC 호출 전에 확인
+  if (entity === 'Europe') {
+    console.warn('⚠️ Europe entity: getDashboardData should not be called directly. Use API routes instead.');
+  }
+
   const { data, error } = await supabase.rpc("get_dashboard", {
     p_entity: entity,
     p_year: year,

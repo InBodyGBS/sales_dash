@@ -10,6 +10,69 @@ export async function GET(request: NextRequest) {
 
     const supabase = createServiceClient();
     console.log('✅ Supabase client created');
+
+    // Europe 특별 처리: Netherlands, Germany, UK의 모든 year 반환
+    if (entity === 'Europe') {
+      console.log('🌍 Europe entity detected - fetching years from Netherlands, Germany, UK');
+      try {
+        // Netherlands, Germany, UK 각각에서 year 가져오기
+        const europeEntities = ['Netherlands', 'Germany', 'UK'];
+        const allYearPromises = europeEntities.map(async (euroEntity) => {
+          const { data, error } = await supabase
+            .from('mv_sales_cube')
+            .select('year')
+            .eq('entity', euroEntity)
+            .not('year', 'is', null);
+
+          if (error) {
+            console.warn(`⚠️ Failed to fetch years for ${euroEntity}:`, error);
+            return [];
+          }
+
+          return (data || [])
+            .map((r: any) => r.year)
+            .filter((y: any) => y != null && !isNaN(Number(y)))
+            .map((y: any) => Number(y))
+            .filter((y: number) => y > 1900 && y < 2100);
+        });
+
+        const yearArrays = await Promise.all(allYearPromises);
+        const allYears = Array.from(new Set(yearArrays.flat())).sort((a: number, b: number) => b - a);
+
+        console.log(`✅ Europe years fetched from Netherlands, Germany, UK: ${allYears}`);
+        return NextResponse.json({ years: allYears });
+      } catch (europeErr) {
+        console.error('❌ Europe years exception:', europeErr);
+        // Fallback: sales_data_europe View에서 가져오기
+        try {
+          const { data: europeData, error: europeError } = await supabase
+            .from('sales_data_europe')
+            .select('year')
+            .not('year', 'is', null);
+
+          if (europeError) {
+            console.error('❌ Europe years fallback query error:', europeError);
+            return NextResponse.json({ years: [] });
+          }
+
+          const years = Array.from(
+            new Set(
+              (europeData || [])
+                .map((r: any) => r.year)
+                .filter((y: any) => y != null && !isNaN(Number(y)))
+                .map((y: any) => Number(y))
+                .filter((y: number) => y > 1900 && y < 2100)
+            )
+          ).sort((a: number, b: number) => b - a);
+
+          console.log(`✅ Europe years fetched from sales_data_europe (fallback): ${years}`);
+          return NextResponse.json({ years });
+        } catch (fallbackErr) {
+          console.error('❌ Europe years fallback exception:', fallbackErr);
+          return NextResponse.json({ years: [] });
+        }
+      }
+    }
     
     console.log('🔄 Fetching distinct years using RPC function...');
     

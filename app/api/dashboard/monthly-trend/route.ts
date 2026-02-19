@@ -26,9 +26,57 @@ export async function GET(request: NextRequest) {
     }
     
     const prevYear = yearInt - 1;
+    const isEurope = entities.includes('Europe');
     
     // 디버깅: 받은 year 파라미터 확인
-    console.log(`📊 Monthly Trend API - Received year parameter: "${year}", parsed as: ${yearInt}, entities: ${entities.join(',')}`);
+    console.log(`📊 Monthly Trend API - Received year parameter: "${year}", parsed as: ${yearInt}, entities: ${entities.join(',')}, isEurope: ${isEurope}`);
+
+    // Europe 특별 처리: sales_data_europe View 사용
+    if (isEurope) {
+      console.log('🌍 Europe entity detected - querying sales_data_europe view');
+      try {
+        const fetchEuropeMonthData = async (yr: number) => {
+          const { data, error } = await supabase
+            .from('sales_data_europe')
+            .select('invoice_date, line_amount_mst, quantity')
+            .eq('year', yr)
+            .not('invoice_date', 'is', null);
+          if (error) { console.error(`Europe monthly trend error (year ${yr}):`, error); return []; }
+          return data || [];
+        };
+
+        const [currentData, prevData] = await Promise.all([fetchEuropeMonthData(yearInt), fetchEuropeMonthData(prevYear)]);
+
+        const buildMonthMap = (rows: any[]) => {
+          const map = new Map<number, { amount: number; qty: number }>();
+          rows.forEach((r: any) => {
+            if (!r.invoice_date) return;
+            const month = new Date(r.invoice_date).getMonth() + 1;
+            const existing = map.get(month) || { amount: 0, qty: 0 };
+            existing.amount += Number(r.line_amount_mst) || 0;
+            existing.qty += Number(r.quantity) || 0;
+            map.set(month, existing);
+          });
+          return map;
+        };
+
+        const currMap = buildMonthMap(currentData);
+        const prevMap = buildMonthMap(prevData);
+
+        const result = Array.from({ length: 12 }, (_, i) => {
+          const month = i + 1;
+          const curr = currMap.get(month) || { amount: 0, qty: 0 };
+          const prev = prevMap.get(month) || { amount: 0, qty: 0 };
+          return { month, amount: curr.amount, qty: curr.qty, prevAmount: prev.amount, prevQty: prev.qty };
+        });
+
+        console.log(`✅ Europe monthly trend fetched`);
+        return NextResponse.json(result);
+      } catch (europeErr) {
+        console.error('Europe monthly trend exception:', europeErr);
+        return NextResponse.json({ error: 'Failed to fetch Europe monthly trend', details: String(europeErr) }, { status: 500 });
+      }
+    }
 
     // 현재 연도 데이터 가져오기
     const fetchYearData = async (year: number) => {

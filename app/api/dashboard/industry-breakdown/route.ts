@@ -17,7 +17,8 @@ export async function GET(request: NextRequest) {
     const supabase = createServiceClient();
     const yearInt = parseInt(year);
     
-    console.log(`📊 Industry Breakdown API - Request params:`, { year, yearInt, entities });
+    const isEurope = entities.includes('Europe');
+    console.log(`📊 Industry Breakdown API - Request params:`, { year, yearInt, entities, isEurope });
     
     if (isNaN(yearInt)) {
       console.error(`❌ Industry Breakdown API - Invalid year parameter: "${year}"`);
@@ -25,6 +26,42 @@ export async function GET(request: NextRequest) {
         { error: 'Invalid year parameter', details: `Year "${year}" is not a valid number` },
         { status: 400 }
       );
+    }
+
+    // Europe 특별 처리: sales_data_europe View 사용
+    if (isEurope) {
+      console.log('🌍 Europe entity detected - querying sales_data_europe view for industry breakdown');
+      try {
+        const { data: europeData, error: europeError } = await supabase
+          .from('sales_data_europe')
+          .select('industry, line_amount_mst')
+          .eq('year', yearInt)
+          .not('line_amount_mst', 'is', null);
+
+        if (europeError) {
+          console.error('❌ Europe industry breakdown error:', europeError);
+          return NextResponse.json([]);
+        }
+
+        const industryMap = new Map<string, { amount: number; transactions: number }>();
+        (europeData || []).forEach((r: any) => {
+          const industry = r.industry || 'Unknown';
+          const existing = industryMap.get(industry) || { amount: 0, transactions: 0 };
+          existing.amount += Number(r.line_amount_mst) || 0;
+          existing.transactions += 1;
+          industryMap.set(industry, existing);
+        });
+
+        const result = Array.from(industryMap.entries())
+          .map(([industry, d]) => ({ industry, amount: d.amount, transactions: d.transactions }))
+          .sort((a, b) => b.amount - a.amount);
+
+        console.log(`✅ Europe industry breakdown fetched: ${result.length} industries`);
+        return NextResponse.json(result);
+      } catch (europeErr) {
+        console.error('Europe industry breakdown exception:', europeErr);
+        return NextResponse.json([]);
+      }
     }
 
     // 모든 데이터를 가져오기 위해 페이지네이션 처리

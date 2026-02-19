@@ -16,6 +16,47 @@ export async function GET(request: NextRequest) {
 
     const supabase = createServiceClient();
     const yearInt = parseInt(year);
+    const isEurope = entities.includes('Europe');
+
+    // Europe 특별 처리: sales_data_europe View 사용
+    if (isEurope) {
+      console.log('🌍 Europe entity detected - querying sales_data_europe view for FG distribution');
+      try {
+        const { data: europeData, error: europeError } = await supabase
+          .from('sales_data_europe')
+          .select('fg_classification, line_amount_mst')
+          .eq('year', yearInt);
+
+        if (europeError) {
+          console.error('❌ Europe FG distribution error:', europeError);
+          return NextResponse.json([{ fg: 'FG', amount: 0, percentage: 0 }, { fg: 'NonFG', amount: 0, percentage: 0 }]);
+        }
+
+        const normalizeFGEurope = (fg: string | null | undefined): string => {
+          if (!fg || fg.trim() === '') return 'NonFG';
+          const n = fg.trim().toLowerCase();
+          if (n === 'fg' || n === 'finished goods') return 'FG';
+          if (n === 'nonfg' || n === 'non-fg' || n === 'non_fg') return 'NonFG';
+          return 'FG';
+        };
+
+        const fgMap = new Map<string, number>();
+        (europeData || []).forEach((r: any) => {
+          const fg = normalizeFGEurope(r.fg_classification);
+          fgMap.set(fg, (fgMap.get(fg) || 0) + (Number(r.line_amount_mst) || 0));
+        });
+
+        const total = Array.from(fgMap.values()).reduce((s, v) => s + v, 0);
+        const result = Array.from(fgMap.entries())
+          .map(([fg, amount]) => ({ fg, amount, percentage: total > 0 ? (amount / total) * 100 : 0 }))
+          .sort((a, b) => b.amount - a.amount);
+
+        return NextResponse.json(result.length > 0 ? result : [{ fg: 'FG', amount: 0, percentage: 0 }, { fg: 'NonFG', amount: 0, percentage: 0 }]);
+      } catch (europeErr) {
+        console.error('Europe FG distribution exception:', europeErr);
+        return NextResponse.json([{ fg: 'FG', amount: 0, percentage: 0 }, { fg: 'NonFG', amount: 0, percentage: 0 }]);
+      }
+    }
 
     // 모든 데이터를 가져오기 위해 페이지네이션 처리
     const PAGE_SIZE = 1000;

@@ -31,12 +31,53 @@ export async function GET(request: NextRequest) {
     // Use RPC function for fast aggregation (avoids timeout)
     const prevYear = yearInt - 1;
     const entityArray = entities.length > 0 && !entities.includes('All') ? entities : null;
+    const isEurope = entities.includes('Europe');
     
     console.log(`📊 Summary API - Using RPC function get_dashboard_summary:`, {
       year: yearInt,
       prevYear,
-      entities: entityArray
+      entities: entityArray,
+      isEurope
     });
+
+    // Europe 특별 처리: sales_data_europe View 사용
+    if (isEurope) {
+      console.log('🌍 Europe entity detected - querying sales_data_europe view');
+      try {
+        const aggregateEuropeYear = async (yr: number) => {
+          const { data, error } = await supabase
+            .from('sales_data_europe')
+            .select('line_amount_mst, quantity')
+            .eq('year', yr)
+            .not('line_amount_mst', 'is', null);
+          if (error) { console.error(`Europe summary error (year ${yr}):`, error); return { total: 0, qty: 0, count: 0 }; }
+          let total = 0, qty = 0;
+          (data || []).forEach((r: any) => {
+            total += Number(r.line_amount_mst) || 0;
+            qty += Number(r.quantity) || 0;
+          });
+          return { total, qty, count: (data || []).length };
+        };
+
+        const [curr, prev] = await Promise.all([aggregateEuropeYear(yearInt), aggregateEuropeYear(prevYear)]);
+        const amountChange = prev.total > 0 ? ((curr.total - prev.total) / prev.total) * 100 : 0;
+        const qtyChange = prev.qty > 0 ? ((curr.qty - prev.qty) / prev.qty) * 100 : 0;
+
+        console.log(`✅ Europe summary: current=${curr.total}, prev=${prev.total}`);
+        return NextResponse.json({
+          totalAmount: curr.total,
+          totalQty: curr.qty,
+          avgAmount: curr.count > 0 ? curr.total / curr.count : 0,
+          totalTransactions: curr.count,
+          prevTotalAmount: prev.total,
+          prevTotalQty: prev.qty,
+          comparison: { amount: amountChange, qty: qtyChange },
+        });
+      } catch (europeErr) {
+        console.error('Europe summary exception:', europeErr);
+        return NextResponse.json({ error: 'Failed to fetch Europe summary', details: String(europeErr) }, { status: 500 });
+      }
+    }
 
     try {
       const { data: rpcData, error: rpcError } = await supabase.rpc('get_dashboard_summary', {
