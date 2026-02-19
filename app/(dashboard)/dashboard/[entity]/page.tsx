@@ -161,7 +161,7 @@ export default function EntityDashboardPage() {
         : 0;
       
       // For Asia entity, fetch currency breakdown
-      let currencyBreakdown: any[] | undefined = undefined;
+      let currencyBreakdown: any[] = [];
       if (entityParam === 'Asia') {
         try {
           console.log(`🔄 Fetching currency breakdown for Asia, year: ${yearInt}`);
@@ -169,7 +169,7 @@ export default function EntityDashboardPage() {
           console.log(`📡 Currency summary API response status: ${currencyRes.status}`);
           if (currencyRes.ok) {
             const currencyData = await currencyRes.json();
-            currencyBreakdown = currencyData.currencyBreakdown || [];
+            currencyBreakdown = currencyData?.currencyBreakdown ?? [];
             console.log(`✅ Currency breakdown for Asia:`, currencyBreakdown);
             console.log(`📊 Currency breakdown length: ${currencyBreakdown.length}`);
           } else {
