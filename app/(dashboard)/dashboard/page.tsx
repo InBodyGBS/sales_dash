@@ -8,7 +8,7 @@ import { Building2, ArrowRight, Loader2 } from 'lucide-react';
 import { Entity } from '@/lib/types/sales';
 import toast from 'react-hot-toast';
 
-const ENTITIES: Entity[] = ['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe', 'Singapore'];
+const ENTITIES: Entity[] = ['HQ', 'USA', 'China', 'Japan', 'Europe', 'Netherlands', 'Germany', 'UK', 'Asia', 'Singapore', 'India', 'Mexico', 'Oceania', 'BWA', 'Vietnam', 'Korot', 'Healthcare'];
 
 const ENTITY_DISPLAY_NAMES: Record<Entity, string> = {
   HQ: 'HQ',
@@ -151,7 +151,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Entity Cards Grid */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           {ENTITIES.map((entity) => {
             const hasData = availableEntities.includes(entity);
             return (
