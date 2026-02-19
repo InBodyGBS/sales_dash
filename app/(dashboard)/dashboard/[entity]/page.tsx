@@ -46,6 +46,7 @@ export default function EntityDashboardPage() {
 
   const [year, setYear] = useState<string>('');
   const [quarter, setQuarter] = useState<string>('All');
+  const [month, setMonth] = useState<string | null>(null);
   const [countries, setCountries] = useState<string[]>([]);
   const [fg, setFG] = useState<string>('All');
   
@@ -318,11 +319,13 @@ export default function EntityDashboardPage() {
             year={year}
             entities={[entity]} // Fixed to current entity
             quarter={quarter}
+            month={month}
             countries={countries}
             fg={fg}
             onYearChange={setYear}
             onEntitiesChange={() => {}} // Disabled - entity is fixed from URL
             onQuarterChange={setQuarter}
+            onMonthChange={setMonth}
             onCountriesChange={setCountries}
             onFGChange={setFG}
             disableEntitySelection={true} // Add this prop to disable entity selection
