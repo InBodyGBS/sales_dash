@@ -16,7 +16,6 @@ import toast from 'react-hot-toast';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { getDashboardData, transformMonthlyTrend, transformQuarterly, transformTopProducts } from '@/lib/dashboard';
 
 const ENTITY_DISPLAY_NAMES = {
   HQ: 'HQ',
@@ -137,30 +136,47 @@ export default function EntityDashboardPage() {
       const fgFilter = fg && fg !== 'All' ? fg : null;
       const quarterFilter = quarter && quarter !== 'All' ? quarter : null;
       
-      console.log(`📊 Fetching dashboard data via RPC for year: ${yearInt}, entity: ${entityParam}, fg: ${fgFilter}, quarter: ${quarterFilter}`);
+      console.log(`📊 Fetching dashboard data via API for year: ${yearInt}, entity: ${entityParam}, fg: ${fgFilter}, quarter: ${quarterFilter}`);
       
-      // Create Supabase client
-      const supabase = createClient();
+      // Fetch summary data
+      const summaryRes = await fetch(`/api/dashboard/summary?year=${yearInt}&entities=${entityParam}`);
+      if (!summaryRes.ok) {
+        throw new Error(`Failed to fetch summary: ${summaryRes.statusText}`);
+      }
+      const summaryData = await summaryRes.json();
       
-      // Single RPC call to get all dashboard data
-      const dashboardData = await getDashboardData(supabase, entityParam, yearInt, fgFilter, quarterFilter);
+      // Fetch monthly trend
+      const monthlyRes = await fetch(`/api/dashboard/monthly-trend?year=${yearInt}&entities=${entityParam}`);
+      const monthlyData = monthlyRes.ok ? await monthlyRes.json() : [];
       
-      console.log(`✅ Dashboard data received via RPC:`, {
+      // Fetch quarterly comparison
+      const quarterlyRes = await fetch(`/api/dashboard/quarterly-comparison?year=${yearInt}&entities=${entityParam}`);
+      const quarterlyData = quarterlyRes.ok ? await quarterlyRes.json() : [];
+      
+      // Fetch top products
+      const topProductsRes = await fetch(`/api/dashboard/top-products?year=${yearInt}&entities=${entityParam}`);
+      const topProductsData = topProductsRes.ok ? await topProductsRes.json() : { byAmount: [], byQuantity: [], categories: [], allProducts: [] };
+      
+      // Fetch industry breakdown
+      const industryRes = await fetch(`/api/dashboard/industry-breakdown?year=${yearInt}&entities=${entityParam}`);
+      const industryData = industryRes.ok ? await industryRes.json() : [];
+      
+      console.log(`✅ Dashboard data received via API:`, {
         year: yearInt,
         entity: entityParam,
-        total_amount: dashboardData.total_amount,
-        prev_year_amount: dashboardData.prev_year_amount,
-        monthly_trend_count: dashboardData.monthly_trend.length,
-        quarterly_count: dashboardData.quarterly.length,
-        channels_count: dashboardData.channels.length,
-        top_products_count: dashboardData.top_products_amount.length,
-        industries_count: dashboardData.industries.length,
+        summaryData,
+        monthlyData: monthlyData?.slice(0, 3), // First 3 items
+        quarterlyData: quarterlyData?.slice(0, 2), // First 2 items
+        topProductsData: Array.isArray(topProductsData) ? topProductsData.slice(0, 2) : topProductsData,
+        industryData: industryData?.slice(0, 2), // First 2 items
       });
       
       // Transform data for KPI cards
-      const amountChange = dashboardData.prev_year_amount > 0
-        ? ((dashboardData.total_amount - dashboardData.prev_year_amount) / dashboardData.prev_year_amount) * 100
-        : 0;
+      const totalAmount = summaryData.total_amount || summaryData.totalAmount || 0;
+      const prevYearAmount = summaryData.prev_total_amount || summaryData.prevTotalAmount || summaryData.prev_year_amount || 0;
+      const amountChange = summaryData.comparison?.amount || (prevYearAmount > 0
+        ? ((totalAmount - prevYearAmount) / prevYearAmount) * 100
+        : 0);
       
       // For Asia entity, fetch currency breakdown
       let currencyBreakdown: any[] = [];
@@ -184,26 +200,46 @@ export default function EntityDashboardPage() {
       }
       
       setKpiData({
-        totalAmount: dashboardData.total_amount,
-        totalQty: 0, // RPC에서 제공되지 않으면 0
-        avgAmount: 0,
-        totalTransactions: 0,
-        prevTotalAmount: dashboardData.prev_year_amount,
-        prevTotalQty: 0,
+        totalAmount,
+        totalQty: summaryData.total_qty || summaryData.totalQty || 0,
+        avgAmount: summaryData.avg_amount || summaryData.avgAmount || 0,
+        totalTransactions: summaryData.total_transactions || summaryData.totalTransactions || 0,
+        prevTotalAmount: prevYearAmount,
+        prevTotalQty: summaryData.prev_total_qty || summaryData.prevTotalQty || 0,
         comparison: {
           amount: amountChange,
-          qty: 0,
+          qty: summaryData.comparison?.qty || summaryData.qty_change || 0,
         },
         currencyBreakdown,
       });
       
       // Transform monthly trend data
-      const monthlyTrendData = transformMonthlyTrend(dashboardData.monthly_trend, yearInt);
+      // API returns: [{ month, amount, quantity, prev_amount, prev_quantity }]
+      const months = Array.from({ length: 12 }, (_, i) => i + 1);
+      const monthlyTrendData = months.map((month) => {
+        const monthData = monthlyData.find((m: any) => m.month === month);
+        return {
+          month,
+          amount: monthData?.amount || 0,
+          qty: monthData?.quantity || 0,
+          prevAmount: monthData?.prev_amount || 0,
+          prevQty: monthData?.prev_quantity || 0,
+        };
+      });
       setMonthlyTrend(monthlyTrendData);
       
       // Transform quarterly data
-      const quarterlyData = transformQuarterly(dashboardData.quarterly, yearInt);
-      setQuarterlyComparison(quarterlyData);
+      // API returns: [{ quarter, current_amount, previous_amount, current_quantity, previous_quantity }]
+      const quarters = ["Q1", "Q2", "Q3", "Q4"];
+      const quarterlyTransformed = quarters.map((q) => {
+        const quarterData = quarterlyData.find((qd: any) => qd.quarter === q);
+        return {
+          quarter: q,
+          currentYear: quarterData?.current_amount || 0,
+          previousYear: quarterData?.previous_amount || 0,
+        };
+      });
+      setQuarterlyComparison(quarterlyTransformed);
       
       // Fetch channel sales with all filters
       const channelParams = new URLSearchParams({
@@ -220,12 +256,42 @@ export default function EntityDashboardPage() {
         setChannelSales([]);
       }
       
-      // Set other data directly from RPC response
-      const topProductsData = transformTopProducts(dashboardData);
-      setTopProducts(topProductsData);
+      // Transform top products data
+      // API returns: [{ product, category, fg_classification, amount, quantity, transactions }]
+      // TopProductsChart expects: { byAmount, byQuantity, categories, allProducts }
+      if (Array.isArray(topProductsData)) {
+        const allProducts = topProductsData.map((p: any) => ({
+          product: p.product || 'Unknown',
+          amount: p.amount || 0,
+          qty: p.quantity || 0,
+          category: p.category || null,
+        }));
+        
+        const byAmount = [...allProducts]
+          .sort((a, b) => (b.amount || 0) - (a.amount || 0))
+          .slice(0, 10);
+        
+        const byQuantity = [...allProducts]
+          .sort((a, b) => (b.qty || 0) - (a.qty || 0))
+          .slice(0, 10);
+        
+        const categories = Array.from(new Set(
+          allProducts.map((p: any) => p.category).filter(Boolean)
+        ));
+        
+        setTopProducts({
+          byAmount,
+          byQuantity,
+          categories,
+          allProducts,
+        });
+      } else {
+        // Already in correct format
+        setTopProducts(topProductsData);
+      }
       
       // Industry breakdown
-      setIndustryBreakdown(dashboardData.industries.map((item) => ({
+      setIndustryBreakdown(industryData.map((item: any) => ({
         industry: item.industry,
         amount: item.amount,
         transactions: 0, // RPC에서 제공하지 않음

@@ -53,18 +53,19 @@ export function TopProductsChart({ data, loading, entity }: TopProductsChartProp
   }
 
   // Handle both old format (array) and new format (object with byAmount/byQuantity)
-  const isNewFormat = data && typeof data === 'object' && 'byAmount' in data;
+  const isNewFormat = data && typeof data === 'object' && !Array.isArray(data) && 'byAmount' in data;
   const responseData = isNewFormat ? (data as TopProductsResponse) : null;
+  const oldFormatData = !isNewFormat && Array.isArray(data) ? (data as TopProductsData[]) : [];
   const categories = responseData?.categories || [];
   const allProducts = responseData?.allProducts || null;
   
   // Sort base data with NULL handling
   const baseAmountData = isNewFormat && responseData 
     ? [...responseData.byAmount].sort((a, b) => (b.amount || 0) - (a.amount || 0))
-    : [...(data as TopProductsData[])].sort((a, b) => (b.amount || 0) - (a.amount || 0));
+    : [...oldFormatData].sort((a, b) => (b.amount || 0) - (a.amount || 0));
   const baseQuantityData = isNewFormat && responseData 
     ? [...responseData.byQuantity].sort((a, b) => (b.qty || 0) - (a.qty || 0))
-    : [...(data as TopProductsData[])].sort((a, b) => (b.qty || 0) - (a.qty || 0));
+    : [...oldFormatData].sort((a, b) => (b.qty || 0) - (a.qty || 0));
 
   // Debug: Log categories and allProducts count
   console.log('TopProductsChart - Data format:', isNewFormat ? 'new' : 'old');
@@ -131,7 +132,7 @@ export function TopProductsChart({ data, loading, entity }: TopProductsChartProp
     return baseQuantityData.filter(item => item.category === selectedCategory);
   })();
 
-  if (!data || (isNewFormat && (!amountData || amountData.length === 0)) || (!isNewFormat && (data as TopProductsData[]).length === 0)) {
+  if (!data || (isNewFormat && (!amountData || amountData.length === 0)) || (!isNewFormat && oldFormatData.length === 0)) {
     return (
       <Card>
         <CardHeader>
