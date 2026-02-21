@@ -43,10 +43,12 @@ interface TopProductsData {
 }
 
 export function SalesPriceView() {
-  const [currentView, setCurrentView] = useState<ViewType>('product');
+  const [currentView, setCurrentView] = useState<ViewType>('corp'); // 기본값을 'corp'로 변경
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [selectedEntity, setSelectedEntity] = useState<string>('');
+  const [selectedYear, setSelectedYear] = useState<number | null>(null);
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
   
   const [categories, setCategories] = useState<string[]>([]);
   const [models, setModels] = useState<string[]>([]);
@@ -56,11 +58,15 @@ export function SalesPriceView() {
   const [topProductsData, setTopProductsData] = useState<TopProductsData>({});
   const [loading, setLoading] = useState(false);
 
-  // Load models list
+  // Load models list when year is selected
   useEffect(() => {
     const loadModels = async () => {
+      if (!selectedYear) return; // 연도가 선택되지 않았으면 로드하지 않음
+      
       try {
-        const res = await fetch('/api/analysis/product-price');
+        const prevYear = selectedYear - 1;
+        const yearParam = `${prevYear},${selectedYear}`;
+        const res = await fetch(`/api/analysis/product-price?year=${yearParam}`);
         const data = await res.json();
         if (data.success && data.data.models) {
           setCategories(data.data.categories || []);
@@ -76,7 +82,7 @@ export function SalesPriceView() {
       }
     };
     loadModels();
-  }, []);
+  }, [selectedYear]);
 
   // Filter products by selected category
   const filteredModels = selectedCategory
@@ -94,11 +100,35 @@ export function SalesPriceView() {
     }
   }, [selectedCategory, filteredModels]);
 
+  // Load available years
+  useEffect(() => {
+    const loadYears = async () => {
+      try {
+        const res = await fetch('/api/years');
+        const data = await res.json();
+        if (data.years && Array.isArray(data.years)) {
+          const years = data.years.map((y: any) => parseInt(y)).filter((y: number) => !isNaN(y)).sort((a: number, b: number) => b - a);
+          setAvailableYears(years);
+          if (years.length > 0 && !selectedYear) {
+            setSelectedYear(years[0]); // 가장 최근 연도를 기본값으로
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load years:', error);
+      }
+    };
+    loadYears();
+  }, []);
+
   // Load entities and top products
   useEffect(() => {
     const loadTopProducts = async () => {
+      if (!selectedYear) return; // 연도가 선택되지 않았으면 로드하지 않음
+      
       try {
-        const res = await fetch('/api/analysis/corp-top-products');
+        const prevYear = selectedYear - 1;
+        const yearParam = `${prevYear},${selectedYear}`;
+        const res = await fetch(`/api/analysis/corp-top-products?year=${yearParam}`);
         const data = await res.json();
         if (data.success) {
           setEntities(data.data.entities || []);
@@ -112,9 +142,15 @@ export function SalesPriceView() {
       }
     };
     loadTopProducts();
-  }, []);
+  }, [selectedYear]);
 
   const handleProductClick = (model: string) => {
+    // 제품의 카테고리를 찾아서 자동 선택
+    const productCategory = productCategories[model];
+    if (productCategory) {
+      setSelectedCategory(productCategory);
+    }
+    // 제품 선택 및 뷰 전환
     setSelectedModel(model);
     setCurrentView('product');
   };
@@ -193,28 +229,28 @@ export function SalesPriceView() {
             </CardContent>
           </Card>
 
-          {selectedModel && (
+          {selectedModel && selectedYear && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>2024년</CardTitle>
+                  <CardTitle>{selectedYear - 1}년</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <PriceChart
-                    data={priceData[selectedModel]?.['2024'] || {}}
-                    year={2024}
+                    data={priceData[selectedModel]?.[String(selectedYear - 1)] || {}}
+                    year={selectedYear - 1}
                     model={selectedModel}
                   />
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader>
-                  <CardTitle>2025년</CardTitle>
+                  <CardTitle>{selectedYear}년</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <PriceChart
-                    data={priceData[selectedModel]?.['2025'] || {}}
-                    year={2025}
+                    data={priceData[selectedModel]?.[String(selectedYear)] || {}}
+                    year={selectedYear}
                     model={selectedModel}
                   />
                 </CardContent>
@@ -246,40 +282,63 @@ export function SalesPriceView() {
 
           <Card>
             <CardHeader>
-              <CardTitle>법인 선택</CardTitle>
+              <CardTitle>필터 선택</CardTitle>
               <CardDescription>
-                분석할 법인을 선택하세요
+                연도와 법인을 선택하세요
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Select value={selectedEntity} onValueChange={setSelectedEntity}>
-                <SelectTrigger className="w-full max-w-md">
-                  <SelectValue placeholder="법인을 선택하세요" />
-                </SelectTrigger>
-                <SelectContent>
-                  {entities.map((entity) => (
-                    <SelectItem key={entity} value={entity}>
-                      {entity}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex-1">
+                  <label className="text-sm font-medium mb-2 block">연도</label>
+                  <Select 
+                    value={selectedYear ? String(selectedYear) : ''} 
+                    onValueChange={(value) => setSelectedYear(parseInt(value))}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="연도를 선택하세요" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableYears.map((year) => (
+                        <SelectItem key={year} value={String(year)}>
+                          {year}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex-1">
+                  <label className="text-sm font-medium mb-2 block">법인</label>
+                  <Select value={selectedEntity} onValueChange={setSelectedEntity}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="법인을 선택하세요" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {entities.map((entity) => (
+                        <SelectItem key={entity} value={entity}>
+                          {entity}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
               <p className="text-sm text-muted-foreground mt-4">
                 💡 팁: 그래프 막대를 클릭하면 해당 제품의 단가 분석 화면으로 이동합니다.
               </p>
             </CardContent>
           </Card>
 
-          {selectedEntity && (
+          {selectedEntity && selectedYear && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>2024년</CardTitle>
+                  <CardTitle>{selectedYear - 1}년</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <TopProductsChart
-                    data={topProductsData[selectedEntity]?.['2024'] || []}
-                    year={2024}
+                    data={topProductsData[selectedEntity]?.[String(selectedYear - 1)] || []}
+                    year={selectedYear - 1}
                     entity={selectedEntity}
                     onProductClick={handleProductClick}
                   />
@@ -287,12 +346,12 @@ export function SalesPriceView() {
               </Card>
               <Card>
                 <CardHeader>
-                  <CardTitle>2025년</CardTitle>
+                  <CardTitle>{selectedYear}년</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <TopProductsChart
-                    data={topProductsData[selectedEntity]?.['2025'] || []}
-                    year={2025}
+                    data={topProductsData[selectedEntity]?.[String(selectedYear)] || []}
+                    year={selectedYear}
                     entity={selectedEntity}
                     onProductClick={handleProductClick}
                   />

@@ -302,16 +302,29 @@ BEGIN
         FROM (
             SELECT 
                 CASE WHEN product = '__null__' THEN 'Unknown' ELSE product END as product,
-                CASE WHEN category = '__null__' THEN 'Unknown' ELSE category END as category,
-                CASE WHEN fg_classification = '__null__' THEN 'Unknown' ELSE fg_classification END as fg_classification,
+                -- Get the most common category for this product (mode)
+                (SELECT category FROM (
+                    SELECT category, COUNT(*) as cnt
+                    FROM mv_sales_cube s2
+                    WHERE s2.year = p_year
+                        AND (p_entities IS NULL OR s2.entity = ANY(p_entities))
+                        AND s2.fg_classification = 'FG'
+                        AND s2.product = s.product
+                        AND s2.category IS NOT NULL
+                        AND s2.category != '__null__'
+                    GROUP BY category
+                    ORDER BY cnt DESC
+                    LIMIT 1
+                ) sub LIMIT 1) as category,
+                'FG' as fg_classification,
                 COALESCE(SUM(total_amount), 0) as amount,
                 COALESCE(SUM(total_quantity), 0) as quantity,
                 COALESCE(SUM(row_count), 0) as transactions
-            FROM mv_sales_cube
-            WHERE year = p_year
-                AND (p_entities IS NULL OR entity = ANY(p_entities))
-                AND fg_classification = 'FG'
-            GROUP BY product, category, fg_classification
+            FROM mv_sales_cube s
+            WHERE s.year = p_year
+                AND (p_entities IS NULL OR s.entity = ANY(p_entities))
+                AND s.fg_classification = 'FG'
+            GROUP BY s.product
             ORDER BY COALESCE(SUM(total_amount), 0) DESC
             LIMIT p_limit
         ) product_data

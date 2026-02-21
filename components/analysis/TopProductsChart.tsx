@@ -18,16 +18,25 @@ interface TopProductsChartProps {
 }
 
 export function TopProductsChart({ data, year, entity, onProductClick }: TopProductsChartProps) {
-  const chartData = data
+  // Sort by amount in descending order (내림차순) - 가장 큰 금액이 위에 오도록
+  const sortedData = [...data].sort((a, b) => b.amt - a.amt);
+  
+  const chartData = sortedData
     .slice(0, 10)
     .map((item) => ({
       ...item,
       displayModel: item.model.length > 20 ? `${item.model.substring(0, 20)}...` : item.model,
       originalModel: item.model, // 원본 모델명 보존
-    }))
-    .reverse(); // Top 10을 위에서 아래로 표시하기 위해 reverse
+    }));
 
+  // Format currency in millions (백만원 단위)
   const formatCurrency = (value: number) => {
+    const millions = value / 1000000;
+    return `${millions.toFixed(1)}M`;
+  };
+  
+  // Format currency for tooltip (전체 금액 표시)
+  const formatCurrencyFull = (value: number) => {
     return `₩${value.toLocaleString('ko-KR')}`;
   };
 
@@ -38,9 +47,9 @@ export function TopProductsChart({ data, year, entity, onProductClick }: TopProd
       return (
         <div className="bg-white p-3 border rounded shadow-lg">
           <p className="font-semibold">{modelName}</p>
-          <p className="text-sm">매출: {formatCurrency(data.amt)} ({data.share.toFixed(1)}%)</p>
+          <p className="text-sm">매출: {formatCurrencyFull(data.amt)} ({data.share.toFixed(1)}%)</p>
           <p className="text-sm">수량: {data.qty.toLocaleString()}대</p>
-          <p className="text-sm">평균단가: {formatCurrency(data.price)}</p>
+          <p className="text-sm">평균단가: {formatCurrencyFull(data.price)}</p>
           <p className="text-xs text-muted-foreground mt-1">클릭 시 단가 상세 분석 이동</p>
         </div>
       );

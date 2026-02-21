@@ -11,40 +11,40 @@ export async function GET(request: NextRequest) {
     const supabase = createServiceClient();
     const years = year.split(',').map(y => parseInt(y.trim())).filter(y => !isNaN(y));
 
-    // Build query - use product instead of model, filter by fg_classification = 'FG'
-    let query = supabase
-      .from('sales_data')
-      .select('entity, year, product, quantity, line_amount_mst, fg_classification')
-      .neq('entity', 'HQ')
-      .not('product', 'is', null)
-      .eq('fg_classification', 'FG')
-      .in('year', years.length > 0 ? years : [2024, 2025]);
-
-    if (entity) {
-      query = query.eq('entity', entity);
+    // First, get all distinct entities (excluding HQ) from mv_sales_cube
+    let allEntities: string[] = [];
+    try {
+      // Try using RPC function first (most efficient)
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_distinct_entities');
+      if (!rpcError && rpcData && Array.isArray(rpcData)) {
+        allEntities = rpcData
+          .map((row: any) => row?.entity || row)
+          .filter((entity: any) => entity && typeof entity === 'string' && entity !== 'HQ')
+          .sort();
+      } else {
+        // Fallback: query distinct entities from mv_sales_cube
+        const { data: allEntitiesData, error: entitiesError } = await supabase
+          .from('mv_sales_cube')
+          .select('entity')
+          .neq('entity', 'HQ')
+          .not('entity', 'is', null)
+          .limit(10000);
+        
+        if (!entitiesError && allEntitiesData) {
+          const allEntitiesSet = new Set<string>();
+          allEntitiesData.forEach((row: any) => {
+            if (row.entity) {
+              allEntitiesSet.add(row.entity);
+            }
+          });
+          allEntities = Array.from(allEntitiesSet).sort();
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ Failed to get all entities, will use entities from data:', err);
     }
 
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('❌ Corp Top Products API - Query error:', error);
-      return NextResponse.json(
-        { success: false, error: 'Failed to fetch top products data', details: error.message },
-        { status: 500 }
-      );
-    }
-
-    if (!data || data.length === 0) {
-      return NextResponse.json({
-        success: true,
-        data: {
-          entities: [],
-          topProducts: {},
-        },
-      });
-    }
-
-    // Load exchange rates for KRW conversion (same logic as Group Dashboard)
+    // Load exchange rates and entity currencies for KRW conversion
     const { data: exchangeRates } = await supabase
       .from('exchange_rate')
       .select('year, currency, rate');
@@ -63,88 +63,87 @@ export async function GET(request: NextRequest) {
       entityCurrencyMap.set(ec.entity, ec.currency);
     });
 
-    // Aggregate data by entity, year, product with KRW conversion
-    const entityMap = new Map<string, Map<string, Map<string, { qty: number; amt: number }>>>();
-    const entityYearTotal = new Map<string, Map<string, number>>();
-
-    data.forEach((row) => {
-      const entityName = row.entity || '';
-      const yearStr = String(row.year);
-      const productName = row.product || '';
-      const qty = parseFloat(row.quantity) || 0;
-      let amt = parseFloat(row.line_amount_mst) || 0;
-
-      // Apply KRW conversion (same logic as Group Dashboard)
-      if (entityName && !['HQ', 'Korot', 'Healthcare'].includes(entityName)) {
-        const currency = entityCurrencyMap.get(entityName);
-        if (currency) {
-          const rate = exchangeRateMap.get(`${row.year}_${currency}`) || 1;
-          amt = Math.round(amt * rate);
-        }
-      }
-
-      if (!entityMap.has(entityName)) {
-        entityMap.set(entityName, new Map());
-        entityYearTotal.set(entityName, new Map());
-      }
-
-      const yearMap = entityMap.get(entityName)!;
-      if (!yearMap.has(yearStr)) {
-        yearMap.set(yearStr, new Map());
-        entityYearTotal.get(entityName)!.set(yearStr, 0);
-      }
-
-      const productMap = yearMap.get(yearStr)!;
-      if (!productMap.has(productName)) {
-        productMap.set(productName, { qty: 0, amt: 0 });
-      }
-
-      const productData = productMap.get(productName)!;
-      productData.qty += qty;
-      productData.amt += amt;
-      
-      const yearTotal = entityYearTotal.get(entityName)!.get(yearStr)!;
-      entityYearTotal.get(entityName)!.set(yearStr, yearTotal + amt);
-    });
-
-    // Convert to response format and get Top N
+    // Use the same logic as Top 10 Products: use get_top_products RPC for each entity/year
     const topProducts: any = {};
-    const entities: string[] = [];
-
-    entityMap.forEach((yearMap, entityName) => {
-      entities.push(entityName);
+    
+    // Initialize all entities (even if they have no data)
+    allEntities.forEach((entityName) => {
       topProducts[entityName] = {};
-      
-      yearMap.forEach((productMap, yearStr) => {
-        const yearTotal = entityYearTotal.get(entityName)!.get(yearStr) || 1;
-        const products: any[] = [];
-
-        productMap.forEach((productData, productName) => {
-          const price = productData.qty > 0 ? productData.amt / productData.qty : 0;
-          const share = (productData.amt / yearTotal) * 100;
-          
-          products.push({
-            model: productName,
-            qty: Math.round(productData.qty),
-            amt: Math.round(productData.amt),
-            price: Math.round(price),
-            share: parseFloat(share.toFixed(2)),
-          });
-        });
-
-        // Sort by amount descending and take top N
-        products.sort((a, b) => b.amt - a.amt);
-        topProducts[entityName][yearStr] = products.slice(0, limit);
+      years.forEach((y) => {
+        topProducts[entityName][String(y)] = [];
       });
     });
 
-    // Sort entities alphabetically
-    entities.sort();
+    // Fetch top products for each entity/year combination
+    for (const entityName of allEntities) {
+      // If entity filter is specified, only process that entity
+      if (entity && entity !== entityName) {
+        continue;
+      }
+
+      for (const yearInt of years) {
+        try {
+          // Use the same RPC function as Top 10 Products
+          const { data: rpcData, error: rpcError } = await supabase.rpc('get_top_products', {
+            p_year: yearInt,
+            p_entities: [entityName],
+            p_limit: limit
+          });
+
+          if (!rpcError && rpcData && Array.isArray(rpcData)) {
+            const yearStr = String(yearInt);
+            
+            // Apply KRW conversion to amounts (same logic as Group Dashboard)
+            const products = rpcData.map((item: any) => {
+              const qty = item.quantity || 0;
+              let amt = item.amount || 0;
+              
+              // Apply KRW conversion (same logic as Group Dashboard)
+              if (entityName && !['HQ', 'Korot', 'Healthcare'].includes(entityName)) {
+                const currency = entityCurrencyMap.get(entityName);
+                if (currency) {
+                  const rate = exchangeRateMap.get(`${yearInt}_${currency}`) || 1;
+                  amt = Math.round(amt * rate);
+                }
+              }
+              
+              const price = qty > 0 ? amt / qty : 0;
+              
+              // Calculate total amount for share calculation (after KRW conversion)
+              const totalAmt = rpcData.reduce((sum: number, p: any) => {
+                let pAmt = p.amount || 0;
+                if (entityName && !['HQ', 'Korot', 'Healthcare'].includes(entityName)) {
+                  const currency = entityCurrencyMap.get(entityName);
+                  if (currency) {
+                    const rate = exchangeRateMap.get(`${yearInt}_${currency}`) || 1;
+                    pAmt = Math.round(pAmt * rate);
+                  }
+                }
+                return sum + pAmt;
+              }, 0);
+              const share = totalAmt > 0 ? (amt / totalAmt) * 100 : 0;
+
+              return {
+                model: item.product || 'Unknown',
+                qty: Math.round(qty),
+                amt: Math.round(amt),
+                price: Math.round(price),
+                share: parseFloat(share.toFixed(2)),
+              };
+            });
+
+            topProducts[entityName][yearStr] = products;
+          }
+        } catch (err) {
+          console.error(`❌ Error fetching top products for ${entityName} ${yearInt}:`, err);
+        }
+      }
+    }
 
     return NextResponse.json({
       success: true,
       data: {
-        entities,
+        entities: allEntities,
         topProducts,
       },
     });

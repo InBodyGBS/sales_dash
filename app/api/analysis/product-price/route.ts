@@ -10,13 +10,15 @@ export async function GET(request: NextRequest) {
     const supabase = createServiceClient();
     const years = year.split(',').map(y => parseInt(y.trim())).filter(y => !isNaN(y));
 
-    // Build query - use product instead of model, filter by fg_classification = 'FG'
+    // Use mv_sales_cube (same data source as corp-top-products) instead of sales_data
+    // PRD: Channel Inter-Company 제외, fg_classification = 'FG' 필터
     let query = supabase
-      .from('sales_data')
-      .select('entity, year, product, category, quantity, line_amount_mst, fg_classification')
+      .from('mv_sales_cube')
+      .select('entity, year, product, category, total_quantity, total_amount, fg_classification, channel')
       .neq('entity', 'HQ')
       .not('product', 'is', null)
       .eq('fg_classification', 'FG')
+      .or('channel.is.null,channel.neq.Inter-Company') // Inter-Company 제외
       .in('year', years.length > 0 ? years : [2024, 2025]);
 
     if (model) {
@@ -37,10 +39,34 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: true,
         data: {
+          categories: [],
           models: [],
+          productCategories: {},
           priceData: {},
         },
       });
+    }
+
+    // Debug: Log entity distribution
+    const entityCounts = new Map<string, number>();
+    const entityProductMap = new Map<string, Set<string>>();
+    data.forEach((row: any) => {
+      const entity = row.entity || 'unknown';
+      const product = row.product || '';
+      entityCounts.set(entity, (entityCounts.get(entity) || 0) + 1);
+      if (!entityProductMap.has(entity)) {
+        entityProductMap.set(entity, new Set());
+      }
+      if (product) {
+        entityProductMap.get(entity)!.add(product);
+      }
+    });
+    console.log('📊 Product Price API - Entity distribution:', Object.fromEntries(entityCounts));
+    if (model) {
+      console.log(`📊 Product Price API - Filtered by product: ${model}`);
+      console.log('📊 Product Price API - Entities with this product:', Array.from(entityProductMap.entries())
+        .filter(([entity, products]) => products.has(model))
+        .map(([entity]) => entity));
     }
 
     // Load exchange rates for KRW conversion (same logic as Group Dashboard)
@@ -73,8 +99,8 @@ export async function GET(request: NextRequest) {
       const category = row.category || '';
       const yearStr = String(row.year);
       const entity = row.entity || '';
-      const qty = parseFloat(row.quantity) || 0;
-      let amt = parseFloat(row.line_amount_mst) || 0;
+      const qty = parseFloat(row.total_quantity) || 0; // mv_sales_cube uses total_quantity
+      let amt = parseFloat(row.total_amount) || 0; // mv_sales_cube uses total_amount
 
       // Track category for each product
       if (category && productName) {
@@ -121,6 +147,7 @@ export async function GET(request: NextRequest) {
       priceData[modelName] = {};
       yearMap.forEach((entityMap, yearStr) => {
         priceData[modelName][yearStr] = {};
+        const entitiesInYear: string[] = [];
         entityMap.forEach((entityData, entity) => {
           const price = entityData.qty > 0 ? entityData.amt / entityData.qty : 0;
           priceData[modelName][yearStr][entity] = {
@@ -128,7 +155,12 @@ export async function GET(request: NextRequest) {
             amt: Math.round(entityData.amt),
             price: Math.round(price),
           };
+          entitiesInYear.push(entity);
         });
+        // Debug: Log entities for this product/year
+        if (model && model === modelName) {
+          console.log(`📊 Product Price API - ${modelName} (${yearStr}): entities =`, entitiesInYear.sort());
+        }
       });
       models.push(modelName);
     });

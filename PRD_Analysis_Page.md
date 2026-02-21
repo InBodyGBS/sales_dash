@@ -266,6 +266,7 @@ app/
 - 'fg_classification' : FG 는 제품, NonFG는 제품이 아니므로 무시.
 - `quantity`: 판매 수량
 - `line_amount_mst`: 매출액 (기준 통화) 
+- 'Channel' : Inter-Compnay 제외외
 
 ### 매출액 계산 로직
 - Group Dashboard 의 Amount(KRW) 와 동일로직 사용
