@@ -562,7 +562,10 @@ export async function POST(request: NextRequest) {
             transformed[dbCol] = numValue;
           }
         } else if (value !== undefined && value !== null && value !== '') {
-          transformed[dbCol] = value;
+          // 이미 값이 있으면 덮어쓰지 않음 (특히 invoice_date의 경우 'Invoice date'가 'Date'보다 우선)
+          if (transformed[dbCol] === undefined || transformed[dbCol] === null) {
+            transformed[dbCol] = value;
+          }
         }
       }
 
@@ -1013,7 +1016,6 @@ function getDefaultColumnMapping(): { [key: string]: string } {
     'Invoice': 'invoice',
     'Voucher': 'voucher',
     'Invoice date': 'invoice_date',
-    'Date': 'invoice_date',
     'Pool': 'pool',
     'Supply method': 'supply_method',
     'Sub Method - 1': 'sub_method_1',
