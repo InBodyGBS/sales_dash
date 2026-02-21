@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Upload, BarChart3, Home, Settings } from 'lucide-react';
+import { Upload, BarChart3, Home, Settings, TrendingUp } from 'lucide-react';
 
 export default function DashboardLayout({
   children,
@@ -34,6 +34,12 @@ export default function DashboardLayout({
                   <Button variant="ghost" size="sm" className="text-inbody-dark-gray hover:text-inbody-red hover:bg-inbody-red/10">
                     <Settings className="h-4 w-4 mr-2" />
                     Master Mapping
+                  </Button>
+                </Link>
+                <Link href="/analysis">
+                  <Button variant="ghost" size="sm" className="text-inbody-dark-gray hover:text-inbody-red hover:bg-inbody-red/10">
+                    <TrendingUp className="h-4 w-4 mr-2" />
+                    Analysis
                   </Button>
                 </Link>
               </div>
