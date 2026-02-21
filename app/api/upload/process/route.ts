@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
 
     // 5. Convert Blob to ArrayBuffer and parse Excel
     const arrayBuffer = await fileData.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+    const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: false });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
     const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: true, defval: null });
@@ -220,9 +220,9 @@ export async function POST(request: NextRequest) {
       if (!value) return null;
       
       if (value instanceof Date && !isNaN(value.getTime())) {
-        const year = value.getFullYear();
-        const month = String(value.getMonth() + 1).padStart(2, '0');
-        const day = String(value.getDate()).padStart(2, '0');
+        const year = value.getUTCFullYear();
+        const month = String(value.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(value.getUTCDate()).padStart(2, '0');
         if (year >= 1900 && year <= 2100) {
           return `${year}-${month}-${day}`;
         }
@@ -313,9 +313,9 @@ export async function POST(request: NextRequest) {
         
         const parsedDate = new Date(trimmed);
         if (!isNaN(parsedDate.getTime())) {
-          const year = parsedDate.getFullYear();
-          const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
-          const day = String(parsedDate.getDate()).padStart(2, '0');
+          const year = parsedDate.getUTCFullYear();
+          const month = String(parsedDate.getUTCMonth() + 1).padStart(2, '0');
+          const day = String(parsedDate.getUTCDate()).padStart(2, '0');
           if (year >= 1900 && year <= 2100) {
             return `${year}-${month}-${day}`;
           }
