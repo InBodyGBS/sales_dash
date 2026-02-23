@@ -959,17 +959,25 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ Upload complete: ${totalInserted} rows inserted, ${totalSkipped} rows skipped`);
 
-    // 11. Refresh dashboard cache
+    // 11. Refresh materialized view (mv_sales_cube) for dashboard
     try {
-      console.log('🔄 Refreshing dashboard cache...');
-      const { error: refreshError } = await supabase.rpc('refresh_dashboard');
-      if (refreshError) {
-        console.warn('⚠️ Failed to refresh dashboard cache:', refreshError.message);
+      console.log('🔄 Refreshing mv_sales_cube materialized view...');
+      const refreshRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/dashboard/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      if (refreshRes.ok) {
+        const refreshData = await refreshRes.json();
+        console.log('✅ Materialized view refreshed successfully:', refreshData.message);
       } else {
-        console.log('✅ Dashboard cache refreshed successfully');
+        const refreshError = await refreshRes.json();
+        console.warn('⚠️ Failed to refresh materialized view:', refreshError.details || refreshError.error);
+        console.warn('⚠️ Note: Dashboard may not show the latest data until mv_sales_cube is refreshed manually.');
       }
     } catch (refreshError) {
-      console.warn('⚠️ Error refreshing dashboard cache:', refreshError);
+      console.warn('⚠️ Error refreshing materialized view:', refreshError);
+      console.warn('⚠️ Note: Dashboard may not show the latest data until mv_sales_cube is refreshed manually.');
     }
 
     return NextResponse.json({

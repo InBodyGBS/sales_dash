@@ -14,7 +14,7 @@ import { IndustryBreakdownChart } from '@/components/charts/IndustryBreakdownCha
 import { Entity } from '@/lib/types/sales';
 import toast from 'react-hot-toast';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, RefreshCw, AlertCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 const ENTITY_DISPLAY_NAMES = {
@@ -58,6 +58,8 @@ export default function EntityDashboardPage() {
   const [topProducts, setTopProducts] = useState<any>(null);
   const [industryBreakdown, setIndustryBreakdown] = useState<any[]>([]);
   const [availableEntities, setAvailableEntities] = useState<Entity[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<any>(null);
 
   // Validate entity dynamically based on available entities from API
   const isValidEntity = availableEntities.length === 0 || availableEntities.includes(entity);
@@ -124,6 +126,59 @@ export default function EntityDashboardPage() {
       }
     } catch (error) {
       console.error(`❌ Failed to fetch years for ${entity}:`, error);
+    }
+  };
+
+  const handleRefreshMaterializedView = async () => {
+    setRefreshing(true);
+    try {
+      const response = await fetch('/api/dashboard/refresh', {
+        method: 'POST',
+      });
+      const data = await response.json();
+      
+      if (response.ok) {
+        toast.success(`Materialized view가 갱신되었습니다. (${data.recordCount || 0}개 레코드) 데이터를 다시 불러옵니다...`, { duration: 5000 });
+        // 갱신 후 데이터 다시 불러오기
+        setTimeout(() => {
+          fetchAllData();
+        }, 2000);
+      } else {
+        if (data.isTimeout) {
+          toast.error(
+            `갱신이 timeout되었습니다. Supabase SQL Editor에서 직접 실행해주세요:\n\n${data.sqlCommand}`,
+            { duration: 10000 }
+          );
+        } else {
+          toast.error(`갱신 실패: ${data.details || data.error}`, { duration: 5000 });
+        }
+        console.error('Refresh error details:', data);
+      }
+    } catch (error) {
+      toast.error('Materialized view 갱신 중 오류가 발생했습니다');
+      console.error('Refresh error:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleRunDiagnostics = async () => {
+    try {
+      const response = await fetch(`/api/dashboard/debug?entity=${entity}&year=${year}`);
+      const data = await response.json();
+      setDiagnostics(data);
+      console.log('Diagnostics:', data);
+      
+      if (data.recommendations?.needsRefresh) {
+        toast.error('데이터가 sales_data에는 있지만 mv_sales_cube에는 없습니다. Materialized view를 갱신해주세요.');
+      } else if (data.diagnostics?.sales_data?.count === 0) {
+        toast.error('sales_data에 데이터가 없습니다. 데이터를 업로드해주세요.');
+      } else {
+        toast.success('진단 완료. 콘솔을 확인하세요.');
+      }
+    } catch (error) {
+      toast.error('진단 중 오류가 발생했습니다');
+      console.error('Diagnostics error:', error);
     }
   };
 
@@ -376,7 +431,57 @@ export default function EntityDashboardPage() {
             </p>
           </div>
         </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRunDiagnostics}
+            title="데이터 진단 실행"
+          >
+            <AlertCircle className="h-4 w-4 mr-2" />
+            진단
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefreshMaterializedView}
+            disabled={refreshing}
+            title="Materialized View 갱신"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? '갱신 중...' : '갱신'}
+          </Button>
+        </div>
       </div>
+
+      {diagnostics && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm">
+          <div className="font-semibold mb-2">진단 결과:</div>
+          <div className="space-y-1">
+            <div>sales_data: {diagnostics.diagnostics?.sales_data?.count || 0}개 레코드</div>
+            <div>mv_sales_cube: {diagnostics.diagnostics?.mv_sales_cube?.count || 0}개 레코드</div>
+            <div className="font-semibold text-red-600 mt-2">
+              {diagnostics.recommendations?.message}
+            </div>
+            {diagnostics.diagnostics?.rpc_functions?.refresh_mv_sales_cube?.error && (
+              <div className="text-red-600 mt-1">
+                RPC 함수 오류: {diagnostics.diagnostics.rpc_functions.refresh_mv_sales_cube.error}
+              </div>
+            )}
+            {diagnostics.diagnostics?.all_years_stats && (
+              <div className="mt-3 pt-3 border-t">
+                <div className="font-semibold mb-1">전체 연도 통계:</div>
+                {Object.entries(diagnostics.diagnostics.all_years_stats).map(([y, stats]: [string, any]) => (
+                  <div key={y} className={stats.needsRefresh ? 'text-red-600 font-semibold' : ''}>
+                    {y}년: sales_data {stats.sales_data}개 / mv_sales_cube {stats.mv_sales_cube}개
+                    {stats.needsRefresh && ' ⚠️ 갱신 필요'}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-4">
         {/* Filters Sidebar */}
