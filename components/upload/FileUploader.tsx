@@ -17,6 +17,7 @@ import { Upload, File, X, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Entity } from '@/lib/types/sales';
 import toast from 'react-hot-toast';
 import { ColumnMappingDialog } from './ColumnMappingDialog';
+import { createClient } from '@/lib/supabase/client';
 
 interface FileUploaderProps {
   entity: Entity;
@@ -71,13 +72,37 @@ export function FileUploader({ entity, onUploadSuccess }: FileUploaderProps) {
 
       toast.loading('Uploading file...', { id: 'upload' });
 
-      // Upload directly using the new API endpoint
-      const formData = new FormData();
-      formData.append('file', file);
+      // Step 1: Upload file directly to Supabase Storage from client
+      const supabase = createClient();
+      const timestamp = new Date().getTime();
+      const storagePath = `${entity}/${timestamp}_${file.name}`;
 
+      console.log(`📤 Uploading file to Supabase Storage: ${storagePath} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('sales-files')
+        .upload(storagePath, file, {
+          contentType: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          upsert: false,
+        });
+
+      if (uploadError) {
+        clearInterval(progressInterval);
+        throw new Error(`Storage upload failed: ${uploadError.message}`);
+      }
+
+      console.log(`✅ File uploaded to storage: ${storagePath}`);
+
+      // Step 2: Notify API about the uploaded file (only send path, not file data)
       const response = await fetch(`/api/upload/${entity}`, {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          storagePath: storagePath,
+          fileName: file.name,
+        }),
       });
 
       clearInterval(progressInterval);
@@ -271,13 +296,37 @@ export function FileUploader({ entity, onUploadSuccess }: FileUploaderProps) {
 
       toast.loading('Uploading file...', { id: 'upload' });
 
-      // Upload directly using the new API endpoint
-      const formData = new FormData();
-      formData.append('file', uploadedFile);
+      // Step 1: Upload file directly to Supabase Storage from client
+      const supabase = createClient();
+      const timestamp = new Date().getTime();
+      const storagePath = `${entity}/${timestamp}_${uploadedFile.name}`;
 
+      console.log(`📤 Uploading file to Supabase Storage: ${storagePath} (${(uploadedFile.size / 1024 / 1024).toFixed(2)} MB)`);
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('sales-files')
+        .upload(storagePath, uploadedFile, {
+          contentType: uploadedFile.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          upsert: false,
+        });
+
+      if (uploadError) {
+        clearInterval(progressInterval);
+        throw new Error(`Storage upload failed: ${uploadError.message}`);
+      }
+
+      console.log(`✅ File uploaded to storage: ${storagePath}`);
+
+      // Step 2: Notify API about the uploaded file (only send path, not file data)
       const response = await fetch(`/api/upload/${entity}`, {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          storagePath: storagePath,
+          fileName: uploadedFile.name,
+        }),
       });
 
       clearInterval(progressInterval);

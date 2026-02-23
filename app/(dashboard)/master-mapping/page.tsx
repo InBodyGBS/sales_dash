@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Entity } from '@/lib/types/sales';
 import { useDropzone } from 'react-dropzone';
-import { Upload, Download, Trash2, Edit2, Save, X, Plus } from 'lucide-react';
+import { Upload, Download, Trash2, Edit2, Save, X, Plus, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { createClient } from '@/lib/supabase/client';
 
@@ -55,6 +55,7 @@ export default function MasterMappingPage() {
   const [updatingSalesData, setUpdatingSalesData] = useState(false);
   const [year, setYear] = useState<number | null>(null);
   const [availableYears, setAvailableYears] = useState<number[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
 
   // ==================== Exchange Rate States ====================
   const [exchangeRates, setExchangeRates] = useState<ExchangeRate[]>([]);
@@ -520,6 +521,19 @@ export default function MasterMappingPage() {
   const filteredRates = filterYear === 'all' ? exchangeRates : exchangeRates.filter(r => r.year === filterYear);
   const uniqueYears = [...new Set(exchangeRates.map(r => r.year))].sort((a, b) => b - a);
 
+  // Filter mappings based on search term
+  const filteredMappings = mappings.filter((mapping) => {
+    if (!searchTerm.trim()) return true;
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      mapping.item_number?.toLowerCase().includes(searchLower) ||
+      mapping.fg_classification?.toLowerCase().includes(searchLower) ||
+      mapping.category?.toLowerCase().includes(searchLower) ||
+      mapping.model?.toLowerCase().includes(searchLower) ||
+      mapping.product?.toLowerCase().includes(searchLower)
+    );
+  });
+
   return (
     <div className="container mx-auto py-8 space-y-8">
       <div>
@@ -608,8 +622,25 @@ export default function MasterMappingPage() {
                     <CardTitle className="text-2xl">Item Mapping 목록</CardTitle>
                     <CardDescription className="mt-1">
                       {useMaster ? 'Master Item Mapping 데이터 (모든 Entity 공통)' : `${entity} 엔티티의 Item Mapping 데이터`}
+                      {mappings.length > 0 && (
+                        <span className="ml-2">
+                          {searchTerm ? `(${filteredMappings.length} / ${mappings.length}개)` : `(${mappings.length}개)`}
+                        </span>
+                      )}
                     </CardDescription>
                   </div>
+                  
+                  {mappings.length > 0 && (
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Item Number, FG, Category, Model, Product로 검색..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
+                  )}
                   
                   {mappings.length > 0 && (
                     <div className="flex flex-wrap items-center gap-3 pt-2 border-t">
@@ -653,9 +684,13 @@ export default function MasterMappingPage() {
                   <div className="text-center py-8 text-muted-foreground">
                     Item Mapping 데이터가 없습니다.<br />Excel 파일을 업로드하여 데이터를 추가하세요.
                   </div>
+                ) : filteredMappings.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    검색 결과가 없습니다.
+                  </div>
                 ) : (
                   <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                    {mappings.map((mapping) => {
+                    {filteredMappings.map((mapping) => {
                       const isEditing = editingId === mapping.id;
                       return (
                         <div key={mapping.id || mapping.item_number} className="p-3 border rounded hover:bg-muted/50 transition-colors">

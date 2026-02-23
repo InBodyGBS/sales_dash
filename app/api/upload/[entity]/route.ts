@@ -146,26 +146,19 @@ export async function POST(
   try {
     console.log(`📥 Upload request for entity: ${entity}`);
 
-    const formData = await request.formData();
-    const file = formData.get('file') as File;
+    // File is now uploaded directly from client to Supabase Storage
+    // We only receive the storage path and file name
+    const body = await request.json();
+    const { storagePath, fileName } = body;
 
-    if (!file) {
+    if (!storagePath || !fileName) {
       return NextResponse.json(
-        { error: 'No file provided' },
+        { error: 'Storage path and file name are required' },
         { status: 400 }
       );
     }
 
-    console.log(`📄 File: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
-
-    // 파일 크기 체크 (100MB 제한)
-    const MAX_FILE_SIZE = 100 * 1024 * 1024;
-    if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json(
-        { error: 'File size exceeds 100MB limit' },
-        { status: 413 }
-      );
-    }
+    console.log(`📄 File: ${fileName} at ${storagePath}`);
 
     const supabase = createServiceClient();
 
@@ -174,7 +167,8 @@ export async function POST(
       .from('upload_history')
       .insert({
         entity,
-        file_name: file.name,
+        file_name: fileName,
+        storage_path: storagePath,
         status: 'processing',
       })
       .select()
@@ -183,44 +177,20 @@ export async function POST(
     if (historyError) throw historyError;
     historyId = history.id;
 
-    // 2. 원본 파일을 Supabase Storage에 업로드
-    const timestamp = new Date().getTime();
-    const storagePath = `${entity}/${timestamp}_${file.name}`;
+    console.log(`✅ Upload history created: ${historyId}`);
 
-    const { data: storageData, error: storageError } = await supabase.storage
-      .from('sales-files')
-      .upload(storagePath, file, {
-        contentType: file.type,
-        upsert: false,
-      });
-
-    if (storageError) {
-      throw new Error(`Storage upload failed: ${storageError.message}`);
-    }
-
-    console.log(`✅ File uploaded to storage: ${storagePath}`);
-
-    // 3. 즉시 응답 반환 (타임아웃 방지)
+    // 2. 즉시 응답 반환 (타임아웃 방지)
     // 데이터 처리는 별도 API (/api/upload/process)에서 처리
-    console.log(`📤 File saved. Processing will be done separately.`);
+    console.log(`📤 File already uploaded to storage. Processing will be done separately.`);
 
-    // 히스토리 업데이트 (processing 상태로 설정)
-    await supabase
-      .from('upload_history')
-      .update({
-        storage_path: storagePath,
-        status: 'processing',
-      })
-      .eq('id', historyId);
-
-    // 4. 백그라운드에서 처리 시작 (비동기, 응답을 기다리지 않음)
+    // 3. 백그라운드에서 처리 시작 (비동기, 응답을 기다리지 않음)
     // 클라이언트에서 처리 API를 호출하도록 안내
     return NextResponse.json({
       success: true,
       message: 'File uploaded successfully. Processing will start shortly.',
       data: {
         historyId,
-        fileName: file.name,
+        fileName: fileName,
         storagePath,
         status: 'processing',
         needsProcessing: true,
