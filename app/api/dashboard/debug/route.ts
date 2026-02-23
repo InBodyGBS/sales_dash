@@ -123,7 +123,7 @@ export async function GET(request: NextRequest) {
         all_years_stats: allYearsStats,
         rpc_functions: {
           refresh_mv_sales_cube: {
-            exists: rpcTestError === null || !rpcTestError.message?.includes('does not exist'),
+            exists: !rpcTestError || !rpcTestError?.message?.includes('does not exist'),
             result: rpcTestResult,
             error: rpcTestError?.message || null,
           },
