@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
       summaryResult = summaryData;
       summaryError = summaryErr;
     } catch (e) {
-      summaryError = summaryErr;
+      summaryError = e;
     }
 
     // 8. 모든 연도에 대한 전체 통계
