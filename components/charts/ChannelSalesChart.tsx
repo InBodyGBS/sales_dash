@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatCurrency, formatKRW, formatVND, formatJPY, formatCNH, formatCompactKRW, formatCompactCurrency, formatCompactVND, formatCompactJPY, formatCompactCNH } from '@/lib/utils/formatters';
 import { Entity } from '@/lib/types/sales';
+import React from 'react';
 
 interface ChannelSalesData {
   channel: string;
@@ -88,7 +89,27 @@ export function ChannelSalesChart({ data, loading, entity }: ChannelSalesChartPr
               width={100} 
               fontSize={12}
               interval={0}
-              tick={{ fontSize: 12 }}
+              tick={(props: any) => {
+                const { x, y, payload } = props;
+                // "Inter-Company"를 줄바꿈하여 표시
+                if (payload.value === 'Inter-Company') {
+                  return (
+                    <g transform={`translate(${x},${y})`}>
+                      <text x={0} y={0} dy={-4} textAnchor="end" fill="#666" fontSize={12}>
+                        Inter-
+                      </text>
+                      <text x={0} y={0} dy={10} textAnchor="end" fill="#666" fontSize={12}>
+                        Company
+                      </text>
+                    </g>
+                  );
+                }
+                return (
+                  <text x={x} y={y} dy={3} textAnchor="end" fill="#666" fontSize={12}>
+                    {payload.value}
+                  </text>
+                );
+              }}
             />
             <Tooltip 
               formatter={(value: number) => {
