@@ -123,9 +123,9 @@ export async function GET(request: NextRequest) {
         all_years_stats: allYearsStats,
         rpc_functions: {
           refresh_mv_sales_cube: {
-            exists: !rpcTestError || !rpcTestError?.message?.includes('does not exist'),
+            exists: !rpcTestError,
             result: rpcTestResult,
-            error: rpcTestError?.message || null,
+            error: rpcTestError ? JSON.stringify(rpcTestError) : null,
           },
           get_distinct_years: {
             result: distinctYearsResult,
