@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
     if (error) {
       console.error('❌ Product Price API - Query error:', error);
       return NextResponse.json(
-        { success: false, error: 'Failed to fetch product price data', details: error.message },
+        { success: false, error: 'Failed to fetch product price data', details: (error as Error).message },
         { status: 500 }
       );
     }
