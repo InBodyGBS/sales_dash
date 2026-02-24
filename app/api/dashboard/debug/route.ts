@@ -111,13 +111,13 @@ export async function GET(request: NextRequest) {
         sales_data: {
           count: salesCount || 0,
           sample: salesData?.slice(0, 2) || [],
-          error: salesError?.message || null,
+          error: salesError ? JSON.stringify(salesError) : null,
           years: uniqueYearsFromSales,
         },
         mv_sales_cube: {
           count: cubeCount || 0,
           sample: cubeData?.slice(0, 2) || [],
-          error: cubeError?.message || null,
+          error: cubeError ? JSON.stringify(cubeError) : null,
           years: uniqueYearsFromCube,
         },
         all_years_stats: allYearsStats,
@@ -129,11 +129,11 @@ export async function GET(request: NextRequest) {
           },
           get_distinct_years: {
             result: distinctYearsResult,
-            error: distinctYearsError?.message || null,
+            error: distinctYearsError ? JSON.stringify(distinctYearsError) : null,
           },
           get_dashboard_summary: {
             result: summaryResult,
-            error: summaryError?.message || null,
+            error: summaryError ? JSON.stringify(summaryError) : null,
           },
         },
       },
