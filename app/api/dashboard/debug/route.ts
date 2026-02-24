@@ -83,8 +83,9 @@ export async function GET(request: NextRequest) {
     }
 
     // 8. 모든 연도에 대한 전체 통계
+    // sales_data에 실제 존재하는 모든 연도를 동적으로 체크
     const allYearsStats: any = {};
-    for (const y of uniqueYearsFromSales) {
+    for (const y of uniqueYearsFromSales.sort((a, b) => b - a)) {
       const { count: yearCount } = await supabase
         .from('sales_data')
         .select('*', { count: 'exact', head: true })

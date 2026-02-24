@@ -471,12 +471,14 @@ export default function EntityDashboardPage() {
             {diagnostics.diagnostics?.all_years_stats && (
               <div className="mt-3 pt-3 border-t">
                 <div className="font-semibold mb-1">전체 연도 통계:</div>
-                {Object.entries(diagnostics.diagnostics.all_years_stats).map(([y, stats]: [string, any]) => (
-                  <div key={y} className={stats.needsRefresh ? 'text-red-600 font-semibold' : ''}>
-                    {y}년: sales_data {stats.sales_data}개 / mv_sales_cube {stats.mv_sales_cube}개
-                    {stats.needsRefresh && ' ⚠️ 갱신 필요'}
-                  </div>
-                ))}
+                {Object.entries(diagnostics.diagnostics.all_years_stats)
+                  .sort(([a], [b]) => parseInt(b) - parseInt(a)) // 연도 내림차순 정렬 (최신 연도 먼저)
+                  .map(([y, stats]: [string, any]) => (
+                    <div key={y} className={stats.needsRefresh ? 'text-red-600 font-semibold' : ''}>
+                      {y}년: sales_data {stats.sales_data}개 / mv_sales_cube {stats.mv_sales_cube}개
+                      {stats.needsRefresh && ' ⚠️ 갱신 필요'}
+                    </div>
+                  ))}
               </div>
             )}
           </div>
