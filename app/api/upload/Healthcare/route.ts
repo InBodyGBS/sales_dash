@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 
 // Route Segment Config
 export const runtime = 'nodejs'; // Edge runtime은 XLSX 라이브러리를 지원하지 않으므로 nodejs 사용
-export const maxDuration = 60; // 60초로 제한
+export const maxDuration = 300; // 5분으로 제한 (큰 파일 처리 가능)
 
 // 제거할 컬럼 목록
 const COLUMNS_TO_REMOVE = [
@@ -274,31 +274,41 @@ export async function POST(request: NextRequest) {
     // 타임아웃 체크를 위한 함수
     const checkTimeout = () => {
       const elapsed = Date.now() - startTime;
-      if (elapsed > 55000) { // 55초 경과 시 타임아웃 에러 발생
+      if (elapsed > 280000) { // 280초(약 4분 40초) 경과 시 타임아웃 에러 발생 (maxDuration보다 약간 짧게)
         throw new Error('Request timeout: Processing took too long. Please try with a smaller file or contact support.');
       }
     };
 
-    const formData = await request.formData();
-    const file = formData.get('file') as File;
-
-    if (!file) {
+    // File is now uploaded directly from client to Supabase Storage
+    // We only receive the storage path and file name
+    let body: any;
+    try {
+      body = await request.json();
+    } catch (error) {
+      console.error('❌ Failed to parse request body:', error);
       return NextResponse.json(
-        { error: 'No file provided' },
+        { 
+          success: false,
+          error: 'Invalid request format. Expected JSON with storagePath and fileName.' 
+        },
         { status: 400 }
       );
     }
 
-    console.log(`📄 File: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+    const { storagePath, fileName } = body;
 
-    // 파일 크기 체크 (100MB 제한)
-    const MAX_FILE_SIZE = 100 * 1024 * 1024;
-    if (file.size > MAX_FILE_SIZE) {
+    if (!storagePath || !fileName) {
+      console.error('❌ Missing required fields:', { storagePath: !!storagePath, fileName: !!fileName });
       return NextResponse.json(
-        { error: 'File size exceeds 100MB limit' },
-        { status: 413 }
+        { 
+          success: false,
+          error: 'Storage path and file name are required' 
+        },
+        { status: 400 }
       );
     }
+
+    console.log(`📄 File: ${fileName} at ${storagePath}`);
 
     checkTimeout();
 
@@ -310,7 +320,8 @@ export async function POST(request: NextRequest) {
         .from('upload_history')
         .insert({
           entity,
-          file_name: file.name,
+          file_name: fileName,
+          storage_path: storagePath,
           status: 'processing',
         })
         .select()
@@ -326,40 +337,50 @@ export async function POST(request: NextRequest) {
 
     checkTimeout();
 
-    // 2. 원본 파일을 Supabase Storage에 업로드
-    const timestamp = new Date().getTime();
-    const storagePath = `${entity}/${timestamp}_${file.name}`;
-
+    // 2. 파일을 Supabase Storage에서 다운로드
+    let fileBuffer: ArrayBuffer;
     try {
-      const { data: storageData, error: storageError } = await supabase.storage
+      console.log(`📥 Downloading file from storage: ${storagePath}`);
+      const { data: fileData, error: downloadError } = await supabase.storage
         .from('sales-files')
-        .upload(storagePath, file, {
-          contentType: file.type,
-          upsert: false,
-        });
+        .download(storagePath);
 
-      if (storageError) {
-        throw new Error(`Storage upload failed: ${storageError.message}`);
+      if (downloadError) {
+        console.error('❌ Storage download error:', downloadError);
+        throw new Error(`Failed to download file from storage: ${downloadError.message}`);
       }
-    } catch (error) {
-      throw new Error(`File storage failed: ${(error as Error).message}`);
-    }
 
-    console.log(`✅ File uploaded to storage: ${storagePath}`);
+      if (!fileData) {
+        console.error('❌ No file data returned from storage');
+        throw new Error('File not found in storage');
+      }
+
+      fileBuffer = await fileData.arrayBuffer();
+      console.log(`✅ File downloaded from storage: ${storagePath} (${(fileBuffer.byteLength / 1024 / 1024).toFixed(2)} MB)`);
+    } catch (error) {
+      console.error('❌ File download failed:', error);
+      throw new Error(`File download failed: ${(error as Error).message}`);
+    }
 
     checkTimeout();
 
     // 3. 파일 파싱
     let rawData: any[];
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      const workbook = XLSX.read(arrayBuffer);
+      const workbook = XLSX.read(fileBuffer);
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
       rawData = XLSX.utils.sheet_to_json(worksheet);
       
       if (!rawData || rawData.length === 0) {
         throw new Error('Excel file is empty or could not be parsed');
+      }
+      
+      // 디버깅: 원본 데이터의 컬럼명 확인
+      if (rawData.length > 0) {
+        const originalColumns = Object.keys(rawData[0]);
+        console.log(`📋 Excel 파일의 원본 컬럼명 (${originalColumns.length}개):`, originalColumns);
+        console.log(`🔍 'Invoice' 관련 컬럼 찾기:`, originalColumns.filter(col => col.toLowerCase().includes('invoice')));
       }
     } catch (error) {
       throw new Error(`File parsing failed: ${(error as Error).message}`);
@@ -374,10 +395,21 @@ export async function POST(request: NextRequest) {
     try {
       filteredData = filterAndMapColumns(rawData, entity);
       console.log(`🔧 컬럼 필터링 및 매핑 후: ${Object.keys(filteredData[0] || {}).length}개 컬럼`);
+      
+      // 디버깅: 첫 번째 행의 키 확인
+      if (filteredData.length > 0) {
+        console.log(`🔍 첫 번째 행의 키들:`, Object.keys(filteredData[0]));
+        console.log(`🔍 첫 번째 행의 invoice 값:`, filteredData[0].invoice);
+        console.log(`🔍 첫 번째 행의 customer_invoice_account 값:`, filteredData[0].customer_invoice_account);
+      }
 
       // 빈 행 제거
       filteredData = removeEmptyRows(filteredData);
       console.log(`🗑️ 빈 행 제거 후: ${filteredData.length}개 행`);
+      
+      // invoice가 있는 행 개수 확인
+      const rowsWithInvoice = filteredData.filter(row => row.invoice && row.invoice.toString().trim());
+      console.log(`📊 invoice가 있는 행: ${rowsWithInvoice.length}개`);
     } catch (error) {
       throw new Error(`Data processing failed: ${(error as Error).message}`);
     }
@@ -396,13 +428,17 @@ export async function POST(request: NextRequest) {
     type InvoiceGroup = { invoice: string; customerInvoiceAccount: string; sum: number; rows: any[] };
     const uploadGroupMap = new Map<string, InvoiceGroup>();
 
+    let skippedRowsNoInvoice = 0;
     filteredData.forEach((row) => {
       const inv = (row.invoice || '').toString().trim();
       const acc = (row.customer_invoice_account || '').toString().trim();
       const key = `${inv}|${acc}`;
       const amount = parseFloat(row.line_amount_mst) || 0;
 
-      if (!inv) return; // invoice가 없으면 스킵
+      if (!inv) {
+        skippedRowsNoInvoice++;
+        return; // invoice가 없으면 스킵
+      }
 
       if (!uploadGroupMap.has(key)) {
         uploadGroupMap.set(key, { invoice: inv, customerInvoiceAccount: acc, sum: 0, rows: [] });
@@ -411,6 +447,10 @@ export async function POST(request: NextRequest) {
       g.sum += amount;
       g.rows.push(row);
     });
+    
+    if (skippedRowsNoInvoice > 0) {
+      console.warn(`⚠️ invoice가 없어서 스킵된 행: ${skippedRowsNoInvoice}개`);
+    }
 
     const uploadGroups = Array.from(uploadGroupMap.values());
     console.log(`📋 [${entity}] Upload file has ${uploadGroups.length} unique (invoice, customer_invoice_account) groups`);
@@ -610,7 +650,7 @@ export async function POST(request: NextRequest) {
       duplicateRowsBlocked: duplicateRowCount,
       data: {
         historyId,
-        fileName: file.name,
+        fileName: fileName,
         originalRows: rawData.length,
         filteredRows: totalInserted,
         storagePath,
