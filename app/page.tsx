@@ -121,6 +121,12 @@ export default function HomePage() {
               View Dashboard
             </Button>
           </Link>
+          <Link href="/analysis">
+            <Button size="lg" variant="outline" className="w-full sm:w-auto h-12 px-8 text-base border-2 border-inbody-red text-inbody-red hover:bg-inbody-red hover:text-white transition-all">
+              <TrendingUp className="h-5 w-5 mr-2" />
+              Analysis
+            </Button>
+          </Link>
         </div>
 
         {/* Footer */}
