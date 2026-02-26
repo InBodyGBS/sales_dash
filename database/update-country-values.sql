@@ -1,8 +1,9 @@
 -- Update Country values based on business rules
 -- 
 -- Rule 1: HQ, Healthcare, Korot
---   - If Group = 'CG12', extract text before "(" as Country
+--   - If Group = 'CG12' and contains "(", extract text before "(" as Country
 --   - Example: "USA (something)" -> "USA"
+--   - Otherwise (Group != 'CG12' or Group = 'CG12' without "("), set Country = 'KOREA'
 --
 -- Rule 2: Asia, Singapore, Japan, China, Vietnam, India, Mexico, Oceania
 --   - Use Region value as Country
@@ -27,9 +28,12 @@ BEGIN
     
     -- Rule 1: HQ, Healthcare, Korot
     -- If Group = 'CG12' and contains "(", extract text before "("
+    -- Otherwise, set to 'KOREA'
     IF p_entity IN ('HQ', 'Healthcare', 'Korot') THEN
         IF p_group = 'CG12' AND p_group IS NOT NULL AND p_group LIKE '%(%' THEN
             v_country := TRIM(SPLIT_PART(p_group, '(', 1));
+        ELSE
+            v_country := 'KOREA';
         END IF;
     
     -- Rule 2: Asia, Singapore, Japan, China, Vietnam, India, Mexico, Oceania
@@ -72,7 +76,8 @@ $$ LANGUAGE plpgsql;
 -- IMPORTANT: If timeout occurs, run each Step 3-X block separately!
 -- ============================================
 
--- Step 3-1: Update HQ (Group = 'CG12')
+-- Step 3-1: Update HQ
+-- 3-1a: Update HQ (Group = 'CG12' with "(")
 -- Run this block separately if needed
 DO $$
 DECLARE
@@ -96,17 +101,50 @@ BEGIN
         GET DIAGNOSTICS updated_count = ROW_COUNT;
         total_updated := total_updated + updated_count;
         
-        RAISE NOTICE 'Updated % records for HQ (total: %)', updated_count, total_updated;
+        RAISE NOTICE 'Updated % records for HQ (CG12 with parenthesis) (total: %)', updated_count, total_updated;
         
         EXIT WHEN updated_count = 0;
         
         PERFORM pg_sleep(0.5);
     END LOOP;
     
-    RAISE NOTICE '✅ Completed HQ updates. Total: % records', total_updated;
+    RAISE NOTICE '✅ Completed HQ (CG12 with parenthesis) updates. Total: % records', total_updated;
 END $$;
 
--- Step 3-2: Update Healthcare (Group = 'CG12')
+-- Step 3-1b: Update HQ (all other cases -> 'KOREA')
+DO $$
+DECLARE
+    batch_size INTEGER := 200;
+    updated_count INTEGER;
+    total_updated INTEGER := 0;
+BEGIN
+    LOOP
+        UPDATE sales_data
+        SET country = 'KOREA'
+        WHERE id IN (
+            SELECT id
+            FROM sales_data
+            WHERE entity = 'HQ'
+              AND (country IS NULL OR country != 'KOREA')
+              AND NOT ("group" = 'CG12' AND "group" LIKE '%(%')
+            LIMIT batch_size
+        );
+        
+        GET DIAGNOSTICS updated_count = ROW_COUNT;
+        total_updated := total_updated + updated_count;
+        
+        RAISE NOTICE 'Updated % records for HQ (set to KOREA) (total: %)', updated_count, total_updated;
+        
+        EXIT WHEN updated_count = 0;
+        
+        PERFORM pg_sleep(0.5);
+    END LOOP;
+    
+    RAISE NOTICE '✅ Completed HQ (KOREA) updates. Total: % records', total_updated;
+END $$;
+
+-- Step 3-2: Update Healthcare
+-- 3-2a: Update Healthcare (Group = 'CG12' with "(")
 -- Run this block separately if needed
 DO $$
 DECLARE
@@ -130,17 +168,50 @@ BEGIN
         GET DIAGNOSTICS updated_count = ROW_COUNT;
         total_updated := total_updated + updated_count;
         
-        RAISE NOTICE 'Updated % records for Healthcare (total: %)', updated_count, total_updated;
+        RAISE NOTICE 'Updated % records for Healthcare (CG12 with parenthesis) (total: %)', updated_count, total_updated;
         
         EXIT WHEN updated_count = 0;
         
         PERFORM pg_sleep(0.5);
     END LOOP;
     
-    RAISE NOTICE '✅ Completed Healthcare updates. Total: % records', total_updated;
+    RAISE NOTICE '✅ Completed Healthcare (CG12 with parenthesis) updates. Total: % records', total_updated;
 END $$;
 
--- Step 3-3: Update Korot (Group = 'CG12')
+-- Step 3-2b: Update Healthcare (all other cases -> 'KOREA')
+DO $$
+DECLARE
+    batch_size INTEGER := 200;
+    updated_count INTEGER;
+    total_updated INTEGER := 0;
+BEGIN
+    LOOP
+        UPDATE sales_data
+        SET country = 'KOREA'
+        WHERE id IN (
+            SELECT id
+            FROM sales_data
+            WHERE entity = 'Healthcare'
+              AND (country IS NULL OR country != 'KOREA')
+              AND NOT ("group" = 'CG12' AND "group" LIKE '%(%')
+            LIMIT batch_size
+        );
+        
+        GET DIAGNOSTICS updated_count = ROW_COUNT;
+        total_updated := total_updated + updated_count;
+        
+        RAISE NOTICE 'Updated % records for Healthcare (set to KOREA) (total: %)', updated_count, total_updated;
+        
+        EXIT WHEN updated_count = 0;
+        
+        PERFORM pg_sleep(0.5);
+    END LOOP;
+    
+    RAISE NOTICE '✅ Completed Healthcare (KOREA) updates. Total: % records', total_updated;
+END $$;
+
+-- Step 3-3: Update Korot
+-- 3-3a: Update Korot (Group = 'CG12' with "(")
 -- Run this block separately if needed
 DO $$
 DECLARE
@@ -164,14 +235,46 @@ BEGIN
         GET DIAGNOSTICS updated_count = ROW_COUNT;
         total_updated := total_updated + updated_count;
         
-        RAISE NOTICE 'Updated % records for Korot (total: %)', updated_count, total_updated;
+        RAISE NOTICE 'Updated % records for Korot (CG12 with parenthesis) (total: %)', updated_count, total_updated;
         
         EXIT WHEN updated_count = 0;
         
         PERFORM pg_sleep(0.5);
     END LOOP;
     
-    RAISE NOTICE '✅ Completed Korot updates. Total: % records', total_updated;
+    RAISE NOTICE '✅ Completed Korot (CG12 with parenthesis) updates. Total: % records', total_updated;
+END $$;
+
+-- Step 3-3b: Update Korot (all other cases -> 'KOREA')
+DO $$
+DECLARE
+    batch_size INTEGER := 200;
+    updated_count INTEGER;
+    total_updated INTEGER := 0;
+BEGIN
+    LOOP
+        UPDATE sales_data
+        SET country = 'KOREA'
+        WHERE id IN (
+            SELECT id
+            FROM sales_data
+            WHERE entity = 'Korot'
+              AND (country IS NULL OR country != 'KOREA')
+              AND NOT ("group" = 'CG12' AND "group" LIKE '%(%')
+            LIMIT batch_size
+        );
+        
+        GET DIAGNOSTICS updated_count = ROW_COUNT;
+        total_updated := total_updated + updated_count;
+        
+        RAISE NOTICE 'Updated % records for Korot (set to KOREA) (total: %)', updated_count, total_updated;
+        
+        EXIT WHEN updated_count = 0;
+        
+        PERFORM pg_sleep(0.5);
+    END LOOP;
+    
+    RAISE NOTICE '✅ Completed Korot (KOREA) updates. Total: % records', total_updated;
 END $$;
 
 -- Step 3-4: Update Asia
