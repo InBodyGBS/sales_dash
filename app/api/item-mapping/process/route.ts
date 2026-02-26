@@ -390,7 +390,7 @@ export async function POST(request: NextRequest) {
                      `1. Supabase SQL Editor에서 다음 SQL을 실행하세요:\n\n` +
                      `ALTER TABLE item_mapping DROP CONSTRAINT IF EXISTS valid_entity_item_mapping;\n` +
                      `ALTER TABLE item_mapping ADD CONSTRAINT valid_entity_item_mapping ` +
-                     `CHECK (entity IN ('HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe', 'Singapore'));\n\n` +
+                     `CHECK (entity IN ('HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe', 'Singapore', 'Samhan'));\n\n` +
                      `또는 database/add-new-entities-2026.sql 파일을 실행하세요.`,
             errorCode: error.code,
             errorHint: error.hint,

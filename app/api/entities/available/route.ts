@@ -29,7 +29,7 @@ export async function GET() {
         
         // Check if we have all expected entities (at least 11: HQ, USA, BWA, Vietnam, Healthcare, Korot, Japan, China, India, Mexico, Oceania)
         // If RPC returns less than expected, use fallback to be safe
-        const expectedEntities = ['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania'];
+        const expectedEntities = ['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania', 'Samhan'];
         const hasAllExpected = expectedEntities.every(e => rpcEntities.includes(e));
         
         // Always use fallback if China is missing, even if RPC returns 10 entities

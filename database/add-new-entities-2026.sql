@@ -100,7 +100,7 @@ BEGIN
     -- 새 CHECK 제약 조건 추가 (새 entity 포함)
     ALTER TABLE item_mapping 
     ADD CONSTRAINT valid_entity_item_mapping 
-    CHECK (entity IN ('HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe', 'Singapore'));
+    CHECK (entity IN ('HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe', 'Singapore', 'Samhan'));
     
     RAISE NOTICE '✅ item_mapping: 새 CHECK 제약 조건이 추가되었습니다 (새 entity 포함).';
 END $$;
@@ -122,7 +122,7 @@ BEGIN
     -- 새 CHECK 제약 조건 추가 (새 entity 포함)
     ALTER TABLE column_mapping 
     ADD CONSTRAINT valid_entity_mapping 
-    CHECK (entity IN ('HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe'));
+    CHECK (entity IN ('HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe', 'Samhan'));
     
     RAISE NOTICE '✅ 새 CHECK 제약 조건이 추가되었습니다 (새 entity 포함).';
     

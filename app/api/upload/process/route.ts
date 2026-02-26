@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     const supabase = createServiceClient();
 
     // Entities that require item mapping
-    const entitiesRequiringItemMapping = ['Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe', 'Singapore'];
+    const entitiesRequiringItemMapping = ['Japan', 'China', 'India', 'Mexico', 'Oceania', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe', 'Singapore', 'Samhan'];
     const requiresItemMapping = entitiesRequiringItemMapping.includes(entity);
 
     // 3.1. Load item mapping with fallback logic
@@ -383,8 +383,9 @@ export async function POST(request: NextRequest) {
       const groupStr = group?.toString().trim() || '';
       const invoiceAccountStr = invoiceAccount?.toString().trim() || '';
 
-      if (['OCEANIA', 'INDIA', 'JAPAN', 'MEXICO', 'NETHERLANDS', 'GERMANY', 'UK', 'ASIA', 'EUROPE', 'SINGAPORE'].includes(entityUpper)) {
-        return groupStr || null;
+      // 이 엔티티들은 group 값을 그대로 channel로 사용, group이 공란이면 'Direct'
+      if (['OCEANIA', 'INDIA', 'JAPAN', 'MEXICO', 'NETHERLANDS', 'GERMANY', 'UK', 'ASIA', 'EUROPE', 'SINGAPORE', 'SAMHAN', 'CHINA'].includes(entityUpper)) {
+        return groupStr || 'Direct';
       }
 
       if (!groupStr) return null;
@@ -579,9 +580,11 @@ export async function POST(request: NextRequest) {
         transformed.invoice_account || null
       );
       
-      const entitiesUsingGroupAsChannel = ['Japan', 'Oceania', 'India', 'Mexico', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe', 'Singapore'];
-      if (entitiesUsingGroupAsChannel.includes(entity) && transformed.group) {
-        transformed.channel = transformed.group.toString().trim() || channel || null;
+      const entitiesUsingGroupAsChannel = ['Japan', 'Oceania', 'India', 'Mexico', 'Netherlands', 'Germany', 'UK', 'Asia', 'Europe', 'Singapore', 'Samhan', 'China'];
+      if (entitiesUsingGroupAsChannel.includes(entity)) {
+        // 이 엔티티들은 group 값을 그대로 channel로 사용, group이 공란이면 'Direct'
+        const groupStr = transformed.group?.toString().trim() || '';
+        transformed.channel = groupStr || 'Direct';
       } else if (channel) {
         transformed.channel = channel;
       }

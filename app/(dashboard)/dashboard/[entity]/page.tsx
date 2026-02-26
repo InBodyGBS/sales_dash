@@ -35,6 +35,7 @@ const ENTITY_DISPLAY_NAMES = {
   Asia: 'Asia',
   Europe: 'Europe',
   Singapore: 'Singapore',
+  Samhan: 'Samhan',
   All: 'All',
 } as const;
 
@@ -100,7 +101,7 @@ export default function EntityDashboardPage() {
     } catch (error) {
       console.error('Failed to fetch available entities:', error);
       // If API fails, allow all entities (fallback)
-      setAvailableEntities(['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania']);
+      setAvailableEntities(['HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania', 'Samhan']);
     }
   };
 
@@ -352,31 +353,7 @@ export default function EntityDashboardPage() {
         transactions: 0, // RPC에서 제공하지 않음
       })));
       
-      // FG distribution (only for Healthcare)
-      const entitiesWithFG = ['Healthcare'];
-      if (entitiesWithFG.includes(entityParam)) {
-        // Fetch FG distribution data from API
-        try {
-          const fgRes = await fetch(`/api/dashboard/fg-distribution?year=${yearInt}&entities=${entityParam}`);
-          if (fgRes.ok) {
-            const fgData = await fgRes.json();
-            // Transform API response to match chart format
-            const transformedFgData = fgData.map((item: any) => ({
-              fg: item.fg || item.fg_classification || 'NonFG',
-              amount: item.amount || 0,
-              percentage: item.percentage || 0,
-            }));
-            setFGDistribution(transformedFgData);
-            console.log(`✅ FG distribution data loaded:`, transformedFgData);
-          } else {
-            console.warn('⚠️ Failed to fetch FG distribution, using empty data');
-            setFGDistribution([]);
-          }
-        } catch (fgError) {
-          console.error('❌ Error fetching FG distribution:', fgError);
-          setFGDistribution([]);
-        }
-      }
+      // FG distribution removed - Healthcare now uses USA style layout
     } catch (error) {
       toast.error('Failed to load dashboard data');
       console.error('Failed to fetch dashboard data via RPC:', error);
@@ -512,45 +489,21 @@ export default function EntityDashboardPage() {
           <KPICards data={kpiData} loading={loading} entity={entity} />
 
           {/* Time Trend Section */}
-          {/* Only Healthcare shows FG Distribution */}
-          {entity === 'Healthcare' ? (
-            <>
-              {/* Healthcare: Show FG Distribution */}
-              <div className="grid gap-6 md:grid-cols-2">
-                <MonthlyTrendChart data={monthlyTrend} loading={loading} entity={entity} currentYear={parseInt(year)} />
-                <QuarterlyComparisonChart
-                  data={quarterlyComparison}
-                  currentYear={parseInt(year)}
-                  loading={loading}
-                  entity={entity}
-                />
-              </div>
-
-              {/* FG Distribution and Channel Sales Section */}
-              <div className="grid gap-6 md:grid-cols-2">
-                <FGDistributionChart data={fgDistribution} loading={loading} entity={entity} />
-                <ChannelSalesChart data={channelSales} loading={loading} entity={entity} />
-              </div>
-            </>
-          ) : (
-            <>
-              {/* USA, HQ, Vietnam, Korot, BWA, Japan, China, Mexico, India, Oceania: USA Style Layout */}
-              {/* Monthly Trend - Full Width */}
-              <div className="grid gap-6 md:grid-cols-1">
-                <MonthlyTrendChart data={monthlyTrend} loading={loading} entity={entity} currentYear={parseInt(year)} />
-              </div>
-              {/* Quarterly Comparison and Channel Sales */}
-              <div className="grid gap-6 md:grid-cols-2">
-                <QuarterlyComparisonChart
-                  data={quarterlyComparison}
-                  currentYear={parseInt(year)}
-                  loading={loading}
-                  entity={entity}
-                />
-                <ChannelSalesChart data={channelSales} loading={loading} entity={entity} />
-              </div>
-            </>
-          )}
+          {/* USA Style Layout (USA, HQ, Vietnam, Korot, BWA, Japan, China, Mexico, India, Oceania, Healthcare) */}
+          {/* Monthly Trend - Full Width */}
+          <div className="grid gap-6 md:grid-cols-1">
+            <MonthlyTrendChart data={monthlyTrend} loading={loading} entity={entity} currentYear={parseInt(year)} />
+          </div>
+          {/* Quarterly Comparison and Channel Sales */}
+          <div className="grid gap-6 md:grid-cols-2">
+            <QuarterlyComparisonChart
+              data={quarterlyComparison}
+              currentYear={parseInt(year)}
+              loading={loading}
+              entity={entity}
+            />
+            <ChannelSalesChart data={channelSales} loading={loading} entity={entity} />
+          </div>
           
           {/* Top Products Section */}
           <TopProductsChart data={topProducts} loading={loading} entity={entity} />

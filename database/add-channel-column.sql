@@ -109,47 +109,99 @@ BEGIN
     
     -- Japan entity: group 값을 그대로 channel로 사용
     ELSIF p_entity = 'Japan' THEN
-        v_channel := p_group;
+        IF p_group IS NULL OR TRIM(COALESCE(p_group, '')) = '' THEN
+            v_channel := 'Direct';
+        ELSE
+            v_channel := p_group;
+        END IF;
     
     -- China entity: group 값을 그대로 channel로 사용
     ELSIF p_entity = 'China' THEN
-        v_channel := p_group;
+        IF p_group IS NULL OR TRIM(COALESCE(p_group, '')) = '' THEN
+            v_channel := 'Direct';
+        ELSE
+            v_channel := p_group;
+        END IF;
     
     -- India entity: group 값을 그대로 channel로 사용
     ELSIF p_entity = 'India' THEN
-        v_channel := p_group;
+        IF p_group IS NULL OR TRIM(COALESCE(p_group, '')) = '' THEN
+            v_channel := 'Direct';
+        ELSE
+            v_channel := p_group;
+        END IF;
     
     -- Mexico entity: group 값을 그대로 channel로 사용
     ELSIF p_entity = 'Mexico' THEN
-        v_channel := p_group;
+        IF p_group IS NULL OR TRIM(COALESCE(p_group, '')) = '' THEN
+            v_channel := 'Direct';
+        ELSE
+            v_channel := p_group;
+        END IF;
     
     -- Oceania entity: group 값을 그대로 channel로 사용
     ELSIF p_entity = 'Oceania' THEN
-        v_channel := p_group;
+        IF p_group IS NULL OR TRIM(COALESCE(p_group, '')) = '' THEN
+            v_channel := 'Direct';
+        ELSE
+            v_channel := p_group;
+        END IF;
+    
+    -- Samhan entity: group 값을 그대로 channel로 사용
+    ELSIF p_entity = 'Samhan' THEN
+        IF p_group IS NULL OR TRIM(COALESCE(p_group, '')) = '' THEN
+            v_channel := 'Direct';
+        ELSE
+            v_channel := p_group;
+        END IF;
     
     -- Singapore entity: group 값을 그대로 channel로 사용
     ELSIF p_entity = 'Singapore' THEN
-        v_channel := p_group;
+        IF p_group IS NULL OR TRIM(COALESCE(p_group, '')) = '' THEN
+            v_channel := 'Direct';
+        ELSE
+            v_channel := p_group;
+        END IF;
     
     -- Asia entity: group 값을 그대로 channel로 사용
     ELSIF p_entity = 'Asia' THEN
-        v_channel := p_group;
+        IF p_group IS NULL OR TRIM(COALESCE(p_group, '')) = '' THEN
+            v_channel := 'Direct';
+        ELSE
+            v_channel := p_group;
+        END IF;
     
     -- Netherlands entity: group 값을 그대로 channel로 사용
     ELSIF p_entity = 'Netherlands' THEN
-        v_channel := p_group;
+        IF p_group IS NULL OR TRIM(COALESCE(p_group, '')) = '' THEN
+            v_channel := 'Direct';
+        ELSE
+            v_channel := p_group;
+        END IF;
     
-    -- Germany entity: group 값을 그대로 channel로 사용
+    -- Germany entity: group 값을 그대로 channel로 사용, group이 공란이면 'Direct'
     ELSIF p_entity = 'Germany' THEN
-        v_channel := p_group;
+        IF p_group IS NULL OR TRIM(COALESCE(p_group, '')) = '' THEN
+            v_channel := 'Direct';
+        ELSE
+            v_channel := p_group;
+        END IF;
     
     -- UK entity: group 값을 그대로 channel로 사용
     ELSIF p_entity = 'UK' THEN
-        v_channel := p_group;
+        IF p_group IS NULL OR TRIM(COALESCE(p_group, '')) = '' THEN
+            v_channel := 'Direct';
+        ELSE
+            v_channel := p_group;
+        END IF;
     
     -- Europe entity: group 값을 그대로 channel로 사용
     ELSIF p_entity = 'Europe' THEN
-        v_channel := p_group;
+        IF p_group IS NULL OR TRIM(COALESCE(p_group, '')) = '' THEN
+            v_channel := 'Direct';
+        ELSE
+            v_channel := p_group;
+        END IF;
     END IF;
     
     RETURN v_channel;

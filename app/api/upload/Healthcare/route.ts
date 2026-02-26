@@ -98,11 +98,11 @@ function calculateChannel(entity: string, group: string | null, invoiceAccount: 
   const groupStr = group?.toString().trim() || '';
   const invoiceAccountStr = invoiceAccount?.toString().trim() || '';
 
-  // 이 엔티티들은 group 값을 그대로 channel로 사용 (group이 비어있어도 체크)
-  // Japan, Oceania, India, Mexico, Netherlands, Germany, UK, Asia, Europe, Singapore, China
-  if (['OCEANIA', 'INDIA', 'JAPAN', 'MEXICO', 'NETHERLANDS', 'GERMANY', 'UK', 'ASIA', 'EUROPE', 'SINGAPORE', 'CHINA'].includes(entityUpper)) {
-    // group이 있으면 그대로 channel로 사용, 없으면 null
-    return groupStr || null;
+  // 이 엔티티들은 group 값을 그대로 channel로 사용, group이 공란이면 'Direct'
+  // Japan, Oceania, India, Mexico, Netherlands, Germany, UK, Asia, Europe, Singapore, China, Samhan
+  if (['OCEANIA', 'INDIA', 'JAPAN', 'MEXICO', 'NETHERLANDS', 'GERMANY', 'UK', 'ASIA', 'EUROPE', 'SINGAPORE', 'CHINA', 'SAMHAN'].includes(entityUpper)) {
+    // group이 있으면 그대로 channel로 사용, 없으면 'Direct'
+    return groupStr || 'Direct';
   }
 
   // group이 비어있으면 null 반환 (위 엔티티들 제외)

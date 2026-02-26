@@ -2,7 +2,7 @@
 -- Entity column is added as a new column (not in original data)
 
 -- Sales Data Table with all original columns
-CREATE TABLE sales_data (
+CREATE TABLE IF NOT EXISTS sales_data (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     -- Added column: Entity (selected by user during upload)
@@ -104,12 +104,12 @@ CREATE TABLE sales_data (
     upload_batch_id UUID,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     
-    CONSTRAINT valid_entity CHECK (entity IN ('HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania')),
+    CONSTRAINT valid_entity CHECK (entity IN ('HQ', 'USA', 'BWA', 'Vietnam', 'Healthcare', 'Korot', 'Japan', 'China', 'India', 'Mexico', 'Oceania', 'Samhan')),
     CONSTRAINT valid_quarter CHECK (quarter IS NULL OR quarter IN ('Q1', 'Q2', 'Q3', 'Q4'))
 );
 
 -- Upload History Table
-CREATE TABLE upload_history (
+CREATE TABLE IF NOT EXISTS upload_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     batch_id UUID NOT NULL UNIQUE,
     entity VARCHAR(50) NOT NULL,
@@ -122,11 +122,11 @@ CREATE TABLE upload_history (
 );
 
 -- Indexes for performance
-CREATE INDEX idx_sales_entity ON sales_data(entity);
-CREATE INDEX idx_sales_year ON sales_data(year);
-CREATE INDEX idx_sales_quarter ON sales_data(quarter);
-CREATE INDEX idx_sales_invoice_date ON sales_data(invoice_date);
-CREATE INDEX idx_sales_category ON sales_data(category);
-CREATE INDEX idx_sales_product_name ON sales_data(product_name);
-CREATE INDEX idx_sales_region ON sales_data(region);
-CREATE INDEX idx_sales_currency ON sales_data(currency);
+CREATE INDEX IF NOT EXISTS idx_sales_entity ON sales_data(entity);
+CREATE INDEX IF NOT EXISTS idx_sales_year ON sales_data(year);
+CREATE INDEX IF NOT EXISTS idx_sales_quarter ON sales_data(quarter);
+CREATE INDEX IF NOT EXISTS idx_sales_invoice_date ON sales_data(invoice_date);
+CREATE INDEX IF NOT EXISTS idx_sales_category ON sales_data(category);
+CREATE INDEX IF NOT EXISTS idx_sales_product_name ON sales_data(product_name);
+CREATE INDEX IF NOT EXISTS idx_sales_region ON sales_data(region);
+CREATE INDEX IF NOT EXISTS idx_sales_currency ON sales_data(currency);
