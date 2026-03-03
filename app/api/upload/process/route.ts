@@ -618,6 +618,40 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // FREETEXT 자동 채우기 로직: HQ, Healthcare, Korot에서 sales_type이 "FREETEXT"이고 item_number가 공란인 경우
+      const entitiesForFreeText = ['HQ', 'Healthcare', 'Korot'];
+      if (entitiesForFreeText.includes(entity)) {
+        const salesType = transformed.sales_type?.toString().trim().toUpperCase();
+        const itemNumber = transformed.item_number?.toString().trim() || '';
+        
+        if (salesType === 'FREETEXT' && !itemNumber) {
+          // 기존 값이 없을 때만 자동으로 채움
+          if (!transformed.category || transformed.category === '') {
+            transformed.category = 'Others';
+          }
+          if (!transformed.model || transformed.model === '') {
+            transformed.model = 'OTH_ETC';
+          }
+          if (!transformed.fg_classification || transformed.fg_classification === '') {
+            transformed.fg_classification = 'NonFG';
+          }
+          if (!transformed.product || transformed.product === '') {
+            transformed.product = 'ETC';
+          }
+          
+          if (index < 3) {
+            console.log(`✅ [${entity}] FREETEXT 자동 채우기 적용 (row ${index + 1}):`, {
+              sales_type: transformed.sales_type,
+              item_number: transformed.item_number,
+              category: transformed.category,
+              model: transformed.model,
+              fg_classification: transformed.fg_classification,
+              product: transformed.product,
+            });
+          }
+        }
+      }
+
       return transformed;
     });
 

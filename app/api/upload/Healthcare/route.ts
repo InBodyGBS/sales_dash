@@ -241,6 +241,26 @@ function filterAndMapColumns(data: any[], entity: string): any[] {
       mapped.industry = 'Other';
     }
     
+    // FREETEXT 자동 채우기 로직: Healthcare에서 sales_type이 "FREETEXT"이고 item_number가 공란인 경우
+    const salesType = mapped.sales_type?.toString().trim().toUpperCase();
+    const itemNumber = mapped.item_number?.toString().trim() || '';
+    
+    if (salesType === 'FREETEXT' && !itemNumber) {
+      // 기존 값이 없을 때만 자동으로 채움
+      if (!mapped.category || mapped.category === '') {
+        mapped.category = 'Others';
+      }
+      if (!mapped.model || mapped.model === '') {
+        mapped.model = 'OTH_ETC';
+      }
+      if (!mapped.fg_classification || mapped.fg_classification === '') {
+        mapped.fg_classification = 'NonFG';
+      }
+      if (!mapped.product || mapped.product === '') {
+        mapped.product = 'ETC';
+      }
+    }
+    
     // Channel 계산 및 추가
     const channel = calculateChannel(
       entity,
