@@ -209,6 +209,8 @@ export default function InBodyGroupDashboardPage() {
       setEntitySales(entityArray.map((item: any) => ({
         entity: item.entity,
         amount: item.amount,
+        amountLocal: item.amount_local || item.amount,
+        currency: item.currency || 'KRW',
         quantity: item.quantity,
       })));
       
@@ -315,7 +317,13 @@ export default function InBodyGroupDashboardPage() {
 
           {/* Entity Sales Section - Full Width */}
           <div className="grid gap-6 md:grid-cols-1">
-            <EntitySalesChart data={entitySales} loading={loading} />
+            <EntitySalesChart 
+              data={entitySales} 
+              loading={loading}
+              year={parseInt(year)}
+              quarter={quarter}
+              month={month}
+            />
           </div>
 
           {/* Quarterly Comparison and Channel Sales Section */}

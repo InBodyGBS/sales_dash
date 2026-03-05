@@ -239,7 +239,7 @@ $$ LANGUAGE plpgsql STABLE;
 GRANT EXECUTE ON FUNCTION get_inbody_group_quarterly TO authenticated, anon, service_role;
 
 -- ============================================
--- 5. InBody Group Entity별 매출 (KRW)
+-- 5. InBody Group Entity별 매출 (KRW + Local Currency)
 -- ============================================
 DROP FUNCTION IF EXISTS get_inbody_group_entity_sales CASCADE;
 
@@ -254,6 +254,8 @@ BEGIN
         SELECT json_agg(json_build_object(
             'entity', entity,
             'amount', total_amount_krw,
+            'amount_local', total_amount_local,
+            'currency', currency,
             'quantity', total_quantity
         ) ORDER BY total_amount_krw DESC)
         FROM (
@@ -265,6 +267,8 @@ BEGIN
                         ELSE ROUND(total_amount * COALESCE(e.rate, 1))
                     END
                 ) as total_amount_krw,
+                SUM(total_amount) as total_amount_local,
+                COALESCE(ec.currency, 'KRW') as currency,
                 SUM(total_quantity) as total_quantity
             FROM mv_sales_cube s
             LEFT JOIN entity_currency ec ON s.entity = ec.entity
@@ -273,7 +277,7 @@ BEGIN
                 AND (s.channel IS NULL OR s.channel != 'Inter-Company')
                 AND (p_quarter IS NULL OR p_quarter = 'All' OR s.quarter = p_quarter)
                 AND (p_month IS NULL OR s.month = p_month)
-            GROUP BY s.entity
+            GROUP BY s.entity, ec.currency
         ) entity_data
     );
 END;
