@@ -668,141 +668,103 @@ export async function POST(request: NextRequest) {
     }
 
     // ============================================
-    // 🔑 통합 중복 검증 로직 (모든 Entity 공통)
-    // entity + invoice + customer_invoice_account 그룹의 line_amount_mst 합계 비교
+    // 🔑 행 단위 중복 검증 로직 (모든 Entity 공통)
+    // 각 row를 (invoice, line_number) 기준으로 DB와 1:1 비교
+    // line_number가 없는 경우 (invoice, item_number, line_amount_mst) 사용
+    // → 중복인 행만 스킵, 새로운 행은 업로드
     // ============================================
-    console.log(`🔍 [${entity}] Unified duplicate check: entity + invoice + customer_invoice_account → SUM(line_amount_mst)`);
-    
+    console.log(`🔍 [${entity}] Row-level duplicate check: (invoice, line_number) per row`);
+
     const originalCount = transformedData.length;
     let deduplicatedData: any[] = [];
 
-    // Step A: 파일 내에서 (invoice, customer_invoice_account) 그룹별 합계 계산
-    type InvoiceGroup = { invoice: string; customerInvoiceAccount: string; sum: number; rows: any[] };
-    const uploadGroupMap = new Map<string, InvoiceGroup>();
-
+    // Step A: 업로드 파일에서 invoice 목록 수집
+    const invoiceSet = new Set<string>();
     transformedData.forEach((row) => {
       const inv = (row.invoice || '').toString().trim();
-      const acc = (row.customer_invoice_account || '').toString().trim();
-      const key = `${inv}|${acc}`;
-      const amount = parseFloat(row.line_amount_mst) || 0;
-
-      if (!uploadGroupMap.has(key)) {
-        uploadGroupMap.set(key, { invoice: inv, customerInvoiceAccount: acc, sum: 0, rows: [] });
-      }
-      const g = uploadGroupMap.get(key)!;
-      g.sum += amount;
-      g.rows.push(row);
+      if (inv) invoiceSet.add(inv);
     });
+    const invoiceList = [...invoiceSet];
+    console.log(`📋 [${entity}] Upload has ${transformedData.length} rows across ${invoiceList.length} unique invoices`);
 
-    const uploadGroups = Array.from(uploadGroupMap.values());
-    console.log(`📋 [${entity}] Upload file has ${uploadGroups.length} unique (invoice, customer_invoice_account) groups`);
-    console.log(`📋 [${entity}] Total rows in upload: ${originalCount}`);
+    // Step B: DB에서 동일 invoice의 기존 행 조회 → 행 단위 키 Set 생성
+    const dbExistingKeys = new Set<string>();
 
-    // Step B: DB에서 동일 (entity, invoice) 조합의 기존 데이터 조회
-    const invoiceList = [...new Set(uploadGroups.map((g) => g.invoice).filter(Boolean))];
-    console.log(`📋 [${entity}] Checking ${invoiceList.length} unique invoices in DB`);
-
-    let dbGroupSums = new Map<string, number>(); // key: `invoice|account` → sum
-    
     if (invoiceList.length > 0) {
-      const BATCH_SIZE = 1000;
-      let allDbRows: any[] = [];
-      
-      for (let i = 0; i < invoiceList.length; i += BATCH_SIZE) {
-        const batchInvoices = invoiceList.slice(i, i + BATCH_SIZE);
-        console.log(`🔍 [${entity}] Querying DB batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(invoiceList.length / BATCH_SIZE)} (${batchInvoices.length} invoices)...`);
-        
+      const DB_BATCH_SIZE = 1000;
+      let totalDbRows = 0;
+
+      for (let i = 0; i < invoiceList.length; i += DB_BATCH_SIZE) {
+        const batchInvoices = invoiceList.slice(i, i + DB_BATCH_SIZE);
+        const batchNum = Math.floor(i / DB_BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(invoiceList.length / DB_BATCH_SIZE);
+        console.log(`🔍 [${entity}] Querying DB batch ${batchNum}/${totalBatches} (${batchInvoices.length} invoices)...`);
+
         const { data: dbRows, error: dbError } = await supabase
           .from('sales_data')
-          .select('invoice, customer_invoice_account, line_amount_mst')
+          .select('invoice, line_number, item_number, line_amount_mst')
           .eq('entity', entity)
           .in('invoice', batchInvoices);
 
         if (dbError) {
-          console.error(`❌ [${entity}] DB duplicate check query failed (batch ${Math.floor(i / BATCH_SIZE) + 1}):`, dbError.message);
+          console.error(`❌ [${entity}] DB query failed (batch ${batchNum}):`, dbError.message);
         } else if (dbRows && dbRows.length > 0) {
-          allDbRows.push(...dbRows);
-          console.log(`📊 [${entity}] Batch ${Math.floor(i / BATCH_SIZE) + 1}: Found ${dbRows.length} existing DB rows`);
+          totalDbRows += dbRows.length;
+          dbRows.forEach((row: any) => {
+            const inv = (row.invoice || '').toString().trim();
+            const lineNum = (row.line_number ?? '').toString().trim();
+            const itemNum = (row.item_number || '').toString().trim();
+            const amount = (parseFloat(row.line_amount_mst) || 0).toFixed(2);
+
+            // 행 고유 키: line_number가 있으면 우선 사용, 없으면 item_number + amount
+            const rowKey = lineNum
+              ? `${inv}|L:${lineNum}`
+              : `${inv}|I:${itemNum}|A:${amount}`;
+            dbExistingKeys.add(rowKey);
+          });
+          console.log(`📊 [${entity}] Batch ${batchNum}: Found ${dbRows.length} existing DB rows`);
         }
       }
-
-      if (allDbRows.length > 0) {
-        console.log(`📊 [${entity}] Total: Found ${allDbRows.length} existing DB rows for ${invoiceList.length} invoices`);
-
-        allDbRows.forEach((row: any, idx: number) => {
-          const inv = (row.invoice || '').toString().trim();
-          const acc = (row.customer_invoice_account || '').toString().trim();
-          const key = `${inv}|${acc}`;
-          const amount = parseFloat(row.line_amount_mst) || 0;
-          dbGroupSums.set(key, (dbGroupSums.get(key) || 0) + amount);
-          
-          if (idx < 3) {
-            console.log(`   DB row ${idx + 1}: invoice=${inv}, account=${acc}, amount=${amount}, key=${key}`);
-          }
-        });
-        
-        console.log(`📊 [${entity}] Aggregated ${dbGroupSums.size} unique (invoice, account) groups from DB`);
-      } else {
-        console.log(`✅ [${entity}] No existing DB rows found for uploaded invoices → no duplicates`);
-      }
+      console.log(`📊 [${entity}] Total DB existing keys: ${dbExistingKeys.size} (from ${totalDbRows} rows)`);
+    } else {
+      console.log(`✅ [${entity}] No invoices to check → all rows are new`);
     }
 
-    // Step C: 합계 비교 → 중복 그룹만 제외하고 나머지는 업로드
-    const blockedGroups: string[] = [];
-    const allowedRows: any[] = [];
-    let duplicateGroupCount = 0;
+    // Step C: 각 업로드 행을 DB 키와 비교 → 새 행만 허용
     let duplicateRowCount = 0;
+    const allowedRows: any[] = [];
 
-    uploadGroups.forEach((group, idx) => {
-      const key = `${group.invoice}|${group.customerInvoiceAccount}`;
-      const dbSum = dbGroupSums.get(key) ?? null;
+    transformedData.forEach((row) => {
+      const inv = (row.invoice || '').toString().trim();
 
-      if (dbSum !== null && Math.abs(group.sum - dbSum) < 0.01) {
-        // 합계가 동일 → 중복으로 판단, 해당 그룹 제외
-        duplicateGroupCount++;
-        duplicateRowCount += group.rows.length;
-        const groupInfo = `invoice=${group.invoice}, account=${group.customerInvoiceAccount}, uploadSum=${group.sum.toFixed(2)}, dbSum=${dbSum.toFixed(2)}, rows=${group.rows.length}`;
-        blockedGroups.push(groupInfo);
-        
-        if (duplicateGroupCount <= 10) {
-          console.warn(`🚫 [${entity}] Duplicate group ${duplicateGroupCount} (skipped): ${groupInfo}`);
+      // invoice가 없는 행은 항상 허용
+      if (!inv) {
+        allowedRows.push(row);
+        return;
+      }
+
+      const lineNum = (row.line_number ?? '').toString().trim();
+      const itemNum = (row.item_number || '').toString().trim();
+      const amount = (parseFloat(row.line_amount_mst) || 0).toFixed(2);
+
+      const rowKey = lineNum
+        ? `${inv}|L:${lineNum}`
+        : `${inv}|I:${itemNum}|A:${amount}`;
+
+      if (dbExistingKeys.has(rowKey)) {
+        duplicateRowCount++;
+        if (duplicateRowCount <= 5) {
+          console.warn(`🚫 [${entity}] Duplicate row skipped (${duplicateRowCount}): invoice=${inv}, line=${lineNum || '-'}, item=${itemNum}, amount=${amount}`);
         }
       } else {
-        // 합계가 다르거나 DB에 없음 → 새 데이터로 허용
-        if (dbSum !== null && idx < 5) {
-          console.log(`✅ [${entity}] New data (sum differs): invoice=${group.invoice} uploadSum=${group.sum.toFixed(2)} dbSum=${dbSum.toFixed(2)} diff=${Math.abs(group.sum - dbSum).toFixed(2)}`);
-        }
-        allowedRows.push(...group.rows);
+        allowedRows.push(row);
       }
     });
 
-    if (blockedGroups.length > 0) {
-      console.log(`🚫 [${entity}] Skipped ${blockedGroups.length} duplicate invoice group(s) containing ${duplicateRowCount} rows`);
-      console.log(`📊 [${entity}] ${allowedRows.length} rows will be inserted`);
-      if (blockedGroups.length > 0) {
-        console.log(`   Blocked groups (first ${Math.min(10, blockedGroups.length)}):`);
-        blockedGroups.slice(0, 10).forEach((bg, idx) => {
-          console.log(`     ${idx + 1}. ${bg}`);
-        });
-      }
-      if (blockedGroups.length > 10) {
-        console.log(`   ... and ${blockedGroups.length - 10} more duplicate groups`);
-      }
+    if (duplicateRowCount > 0) {
+      console.log(`🚫 [${entity}] Skipped ${duplicateRowCount} duplicate rows → ${allowedRows.length} new rows will be inserted`);
     } else {
-      console.log(`✅ [${entity}] No duplicate invoice groups found → all ${allowedRows.length} rows will be inserted`);
-      
-      // 디버깅: 왜 중복이 감지되지 않는지 확인
-      if (dbGroupSums.size > 0 && uploadGroups.length > 0) {
-        console.log(`🔍 [${entity}] Debug: Checking why duplicates weren't detected...`);
-        const sampleGroup = uploadGroups[0];
-        const sampleKey = `${sampleGroup.invoice}|${sampleGroup.customerInvoiceAccount}`;
-        const sampleDbSum = dbGroupSums.get(sampleKey);
-        console.log(`   Sample upload group: invoice=${sampleGroup.invoice}, account=${sampleGroup.customerInvoiceAccount}, sum=${sampleGroup.sum.toFixed(2)}`);
-        console.log(`   DB sum for this key: ${sampleDbSum !== undefined ? sampleDbSum.toFixed(2) : 'NOT FOUND'}`);
-        if (sampleDbSum !== undefined) {
-          console.log(`   Difference: ${Math.abs(sampleGroup.sum - sampleDbSum).toFixed(2)} (tolerance: 0.01)`);
-        }
-      }
+      console.log(`✅ [${entity}] No duplicate rows found → all ${allowedRows.length} rows will be inserted`);
     }
 
     deduplicatedData = allowedRows;
@@ -1021,7 +983,7 @@ export async function POST(request: NextRequest) {
       success: true,
       rowsInserted: totalInserted,
       rowsSkipped: totalSkipped,
-      duplicateGroupsBlocked: blockedGroups.length,
+      duplicateRowsSkipped: duplicateRowCount,
       batchId,
       errors: errors.length > 0 ? errors : undefined,
     });

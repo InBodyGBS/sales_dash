@@ -98,17 +98,12 @@ function calculateChannel(entity: string, group: string | null, invoiceAccount: 
   const groupStr = group?.toString().trim() || '';
   const invoiceAccountStr = invoiceAccount?.toString().trim() || '';
 
-  // 이 엔티티들은 group 값을 그대로 channel로 사용, group이 공란이면 'Direct'
-  // Japan, Oceania, India, Mexico, Netherlands, Germany, UK, Asia, Europe, Singapore, China, Samhan
   if (['OCEANIA', 'INDIA', 'JAPAN', 'MEXICO', 'NETHERLANDS', 'GERMANY', 'UK', 'ASIA', 'EUROPE', 'SINGAPORE', 'CHINA', 'SAMHAN'].includes(entityUpper)) {
-    // group이 있으면 그대로 channel로 사용, 없으면 'Direct'
     return groupStr || 'Direct';
   }
 
-  // group이 비어있으면 null 반환 (위 엔티티들 제외)
   if (!groupStr) return null;
 
-  // HQ entity
   if (entityUpper === 'HQ') {
     if (groupStr === 'CG11' || groupStr === 'CG31') {
       const hqDistributors = [
@@ -127,7 +122,6 @@ function calculateChannel(entity: string, group: string | null, invoiceAccount: 
     }
   }
 
-  // KOROT entity
   if (entityUpper === 'KOROT') {
     if (groupStr === 'CG11' || groupStr === 'CG31') {
       const korotDistributors = [
@@ -146,7 +140,6 @@ function calculateChannel(entity: string, group: string | null, invoiceAccount: 
     }
   }
 
-  // Healthcare entity
   if (entityUpper === 'HEALTHCARE') {
     if (groupStr === 'CG11' || groupStr === 'CG31') {
       const healthcareDistributors = [
@@ -164,7 +157,6 @@ function calculateChannel(entity: string, group: string | null, invoiceAccount: 
     }
   }
 
-  // Vietnam entity
   if (entityUpper === 'VIETNAM') {
     if (groupStr === 'CG12' || groupStr === 'CG16' || groupStr === 'CG17' || groupStr === 'CG31') {
       return 'Direct';
@@ -177,7 +169,6 @@ function calculateChannel(entity: string, group: string | null, invoiceAccount: 
     }
   }
 
-  // BWA entity
   if (entityUpper === 'BWA') {
     const groupUpper = groupStr.toUpperCase();
     if (groupUpper === 'DOMESTIC' || groupUpper === 'ETC') {
@@ -189,7 +180,6 @@ function calculateChannel(entity: string, group: string | null, invoiceAccount: 
     }
   }
 
-  // USA entity
   if (entityUpper === 'USA') {
     if (invoiceAccountStr === 'UC000001') {
       return 'Distributor';
@@ -217,12 +207,10 @@ function filterAndMapColumns(data: any[], entity: string): any[] {
     };
     
     Object.keys(row).forEach(excelColumn => {
-      // 제거 목록에 없고, 매핑에 있는 컬럼만 처리
       if (!COLUMNS_TO_REMOVE.includes(excelColumn) && COLUMN_MAPPING[excelColumn]) {
         const dbColumn = COLUMN_MAPPING[excelColumn];
         const value = row[excelColumn];
         
-        // 날짜 컬럼 처리
         if (dbColumn === 'invoice_date') {
           mapped[dbColumn] = parseDate(value);
           
@@ -236,17 +224,15 @@ function filterAndMapColumns(data: any[], entity: string): any[] {
       }
     });
     
-    // Industry가 NULL이면 'Other'로 설정
     if (!mapped.industry || mapped.industry === null || mapped.industry === '') {
       mapped.industry = 'Other';
     }
     
-    // FREETEXT 자동 채우기 로직: Healthcare에서 sales_type이 "FREETEXT"이고 item_number가 공란인 경우
+    // FREETEXT 자동 채우기 로직
     const salesType = mapped.sales_type?.toString().trim().toUpperCase();
     const itemNumber = mapped.item_number?.toString().trim() || '';
     
     if (salesType === 'FREETEXT' && !itemNumber) {
-      // 기존 값이 없을 때만 자동으로 채움
       if (!mapped.category || mapped.category === '') {
         mapped.category = 'Others';
       }
@@ -261,7 +247,6 @@ function filterAndMapColumns(data: any[], entity: string): any[] {
       }
     }
     
-    // Channel 계산 및 추가
     const channel = calculateChannel(
       entity,
       mapped.group || null,
@@ -278,7 +263,6 @@ function filterAndMapColumns(data: any[], entity: string): any[] {
 // 빈 행 제거
 function removeEmptyRows(data: any[]): any[] {
   return data.filter(row => {
-    // invoice나 주요 필드가 있는 행만 유지
     return row.invoice || row.sales_type || row.item_number;
   });
 }
@@ -291,16 +275,13 @@ export async function POST(request: NextRequest) {
   try {
     console.log(`📥 Upload request for entity: ${entity}`);
 
-    // 타임아웃 체크를 위한 함수
     const checkTimeout = () => {
       const elapsed = Date.now() - startTime;
-      if (elapsed > 280000) { // 280초(약 4분 40초) 경과 시 타임아웃 에러 발생 (maxDuration보다 약간 짧게)
+      if (elapsed > 280000) {
         throw new Error('Request timeout: Processing took too long. Please try with a smaller file or contact support.');
       }
     };
 
-    // File is now uploaded directly from client to Supabase Storage
-    // We only receive the storage path and file name
     let body: any;
     try {
       body = await request.json();
@@ -396,7 +377,6 @@ export async function POST(request: NextRequest) {
         throw new Error('Excel file is empty or could not be parsed');
       }
       
-      // 디버깅: 원본 데이터의 컬럼명 확인
       if (rawData.length > 0) {
         const originalColumns = Object.keys(rawData[0]);
         console.log(`📋 Excel 파일의 원본 컬럼명 (${originalColumns.length}개):`, originalColumns);
@@ -416,18 +396,15 @@ export async function POST(request: NextRequest) {
       filteredData = filterAndMapColumns(rawData, entity);
       console.log(`🔧 컬럼 필터링 및 매핑 후: ${Object.keys(filteredData[0] || {}).length}개 컬럼`);
       
-      // 디버깅: 첫 번째 행의 키 확인
       if (filteredData.length > 0) {
         console.log(`🔍 첫 번째 행의 키들:`, Object.keys(filteredData[0]));
         console.log(`🔍 첫 번째 행의 invoice 값:`, filteredData[0].invoice);
         console.log(`🔍 첫 번째 행의 customer_invoice_account 값:`, filteredData[0].customer_invoice_account);
       }
 
-      // 빈 행 제거
       filteredData = removeEmptyRows(filteredData);
       console.log(`🗑️ 빈 행 제거 후: ${filteredData.length}개 행`);
       
-      // invoice가 있는 행 개수 확인
       const rowsWithInvoice = filteredData.filter(row => row.invoice && row.invoice.toString().trim());
       console.log(`📊 invoice가 있는 행: ${rowsWithInvoice.length}개`);
     } catch (error) {
@@ -437,116 +414,111 @@ export async function POST(request: NextRequest) {
     checkTimeout();
 
     // ============================================
-    // 🔑 통합 중복 검증 로직 (모든 Entity 공통)
-    // entity + invoice + customer_invoice_account 그룹의 line_amount_mst 합계 비교
+    // 🔑 행 단위 중복 검증 로직
+    // 각 row를 (invoice, line_number) 기준으로 DB와 1:1 비교
+    // line_number가 없는 경우 (invoice, item_number, line_amount_mst) 사용
+    // → 중복인 행만 스킵, 새로운 행은 업로드
     // ============================================
-    console.log(`🔍 [${entity}] Unified duplicate check: entity + invoice + customer_invoice_account → SUM(line_amount_mst)`);
-    
-    const originalCount = filteredData.length;
+    console.log(`🔍 [${entity}] Row-level duplicate check: (invoice, line_number) per row`);
 
-    // Step A: 파일 내에서 (invoice, customer_invoice_account) 그룹별 합계 계산
-    type InvoiceGroup = { invoice: string; customerInvoiceAccount: string; sum: number; rows: any[] };
-    const uploadGroupMap = new Map<string, InvoiceGroup>();
-
+    // Step A: 업로드 파일에서 invoice 목록 수집
+    const invoiceSet = new Set<string>();
     let skippedRowsNoInvoice = 0;
     filteredData.forEach((row) => {
       const inv = (row.invoice || '').toString().trim();
-      const acc = (row.customer_invoice_account || '').toString().trim();
-      const key = `${inv}|${acc}`;
-      const amount = parseFloat(row.line_amount_mst) || 0;
-
-      if (!inv) {
+      if (inv) {
+        invoiceSet.add(inv);
+      } else {
         skippedRowsNoInvoice++;
-        return; // invoice가 없으면 스킵
       }
-
-      if (!uploadGroupMap.has(key)) {
-        uploadGroupMap.set(key, { invoice: inv, customerInvoiceAccount: acc, sum: 0, rows: [] });
-      }
-      const g = uploadGroupMap.get(key)!;
-      g.sum += amount;
-      g.rows.push(row);
     });
-    
+
     if (skippedRowsNoInvoice > 0) {
       console.warn(`⚠️ invoice가 없어서 스킵된 행: ${skippedRowsNoInvoice}개`);
     }
 
-    const uploadGroups = Array.from(uploadGroupMap.values());
-    console.log(`📋 [${entity}] Upload file has ${uploadGroups.length} unique (invoice, customer_invoice_account) groups`);
+    const invoiceList = [...invoiceSet];
+    console.log(`📋 [${entity}] Upload has ${filteredData.length} rows across ${invoiceList.length} unique invoices`);
 
-    // Step B: DB에서 동일 (entity, invoice) 조합의 기존 데이터 조회
-    const invoiceList = [...new Set(uploadGroups.map((g) => g.invoice).filter(Boolean))];
-    console.log(`📋 [${entity}] Checking ${invoiceList.length} unique invoices in DB`);
+    // Step B: DB에서 동일 invoice의 기존 행 조회 → 행 단위 키 Set 생성
+    const dbExistingKeys = new Set<string>();
 
-    let dbGroupSums = new Map<string, number>(); // key: `invoice|account` → sum
-    
     if (invoiceList.length > 0) {
-      const BATCH_SIZE = 1000;
-      let allDbRows: any[] = [];
-      
-      for (let i = 0; i < invoiceList.length; i += BATCH_SIZE) {
-        const batchInvoices = invoiceList.slice(i, i + BATCH_SIZE);
-        console.log(`🔍 [${entity}] Querying DB batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(invoiceList.length / BATCH_SIZE)} (${batchInvoices.length} invoices)...`);
-        
+      const DB_BATCH_SIZE = 1000;
+      let totalDbRows = 0;
+
+      for (let i = 0; i < invoiceList.length; i += DB_BATCH_SIZE) {
+        const batchInvoices = invoiceList.slice(i, i + DB_BATCH_SIZE);
+        const batchNum = Math.floor(i / DB_BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(invoiceList.length / DB_BATCH_SIZE);
+        console.log(`🔍 [${entity}] Querying DB batch ${batchNum}/${totalBatches} (${batchInvoices.length} invoices)...`);
+
         const { data: dbRows, error: dbError } = await supabase
           .from('sales_data')
-          .select('invoice, customer_invoice_account, line_amount_mst')
+          .select('invoice, line_number, item_number, line_amount_mst')
           .eq('entity', entity)
           .in('invoice', batchInvoices);
 
         if (dbError) {
-          console.error(`❌ [${entity}] DB duplicate check query failed (batch ${Math.floor(i / BATCH_SIZE) + 1}):`, dbError.message);
+          console.error(`❌ [${entity}] DB query failed (batch ${batchNum}):`, dbError.message);
         } else if (dbRows && dbRows.length > 0) {
-          allDbRows.push(...dbRows);
-          console.log(`📊 [${entity}] Batch ${Math.floor(i / BATCH_SIZE) + 1}: Found ${dbRows.length} existing DB rows`);
+          totalDbRows += dbRows.length;
+          dbRows.forEach((row: any) => {
+            const inv = (row.invoice || '').toString().trim();
+            const lineNum = (row.line_number ?? '').toString().trim();
+            const itemNum = (row.item_number || '').toString().trim();
+            const amount = (parseFloat(row.line_amount_mst) || 0).toFixed(2);
+
+            // 행 고유 키: line_number가 있으면 우선 사용, 없으면 item_number + amount
+            const rowKey = lineNum
+              ? `${inv}|L:${lineNum}`
+              : `${inv}|I:${itemNum}|A:${amount}`;
+            dbExistingKeys.add(rowKey);
+          });
+          console.log(`📊 [${entity}] Batch ${batchNum}: Found ${dbRows.length} existing DB rows`);
         }
       }
-
-      if (allDbRows.length > 0) {
-        console.log(`📊 [${entity}] Total: Found ${allDbRows.length} existing DB rows for ${invoiceList.length} invoices`);
-
-        allDbRows.forEach((row: any) => {
-          const inv = (row.invoice || '').toString().trim();
-          const acc = (row.customer_invoice_account || '').toString().trim();
-          const key = `${inv}|${acc}`;
-          const amount = parseFloat(row.line_amount_mst) || 0;
-          dbGroupSums.set(key, (dbGroupSums.get(key) || 0) + amount);
-        });
-        
-        console.log(`📊 [${entity}] Aggregated ${dbGroupSums.size} unique (invoice, account) groups from DB`);
-      } else {
-        console.log(`✅ [${entity}] No existing DB rows found for uploaded invoices → no duplicates`);
-      }
+      console.log(`📊 [${entity}] Total DB existing keys: ${dbExistingKeys.size} (from ${totalDbRows} rows)`);
+    } else {
+      console.log(`✅ [${entity}] No invoices to check → all rows are new`);
     }
 
-    // Step C: 합계 비교 → 중복 그룹만 제외하고 나머지는 업로드
-    const allowedRows: any[] = [];
-    let duplicateGroupCount = 0;
+    // Step C: 각 업로드 행을 DB 키와 비교 → 새 행만 허용
     let duplicateRowCount = 0;
+    const allowedRows: any[] = [];
 
-    uploadGroups.forEach((group) => {
-      const key = `${group.invoice}|${group.customerInvoiceAccount}`;
-      const dbSum = dbGroupSums.get(key) ?? null;
+    filteredData.forEach((row) => {
+      const inv = (row.invoice || '').toString().trim();
 
-      if (dbSum !== null && Math.abs(group.sum - dbSum) < 0.01) {
-        // 합계가 동일 → 중복으로 판단, 해당 그룹 제외
-        duplicateGroupCount++;
-        duplicateRowCount += group.rows.length;
-        if (duplicateGroupCount <= 10) {
-          console.warn(`🚫 [${entity}] Duplicate group ${duplicateGroupCount} (skipped): invoice=${group.invoice}, account=${group.customerInvoiceAccount}, uploadSum=${group.sum.toFixed(2)}, dbSum=${dbSum.toFixed(2)}, rows=${group.rows.length}`);
+      // invoice가 없는 행은 항상 허용
+      if (!inv) {
+        allowedRows.push(row);
+        return;
+      }
+
+      const lineNum = (row.line_number ?? '').toString().trim();
+      const itemNum = (row.item_number || '').toString().trim();
+      const amount = (parseFloat(row.line_amount_mst) || 0).toFixed(2);
+
+      const rowKey = lineNum
+        ? `${inv}|L:${lineNum}`
+        : `${inv}|I:${itemNum}|A:${amount}`;
+
+      if (dbExistingKeys.has(rowKey)) {
+        duplicateRowCount++;
+        if (duplicateRowCount <= 5) {
+          console.warn(`🚫 [${entity}] Duplicate row skipped (${duplicateRowCount}): invoice=${inv}, line=${lineNum || '-'}, item=${itemNum}, amount=${amount}`);
         }
       } else {
-        // 합계가 다르거나 DB에 없음 → 새 데이터로 허용
-        allowedRows.push(...group.rows);
+        allowedRows.push(row);
       }
     });
 
-    if (duplicateGroupCount > 0) {
-      console.log(`🚫 [${entity}] Skipped ${duplicateGroupCount} duplicate invoice group(s) containing ${duplicateRowCount} rows`);
-      console.log(`📊 [${entity}] ${allowedRows.length} rows will be inserted`);
+    const duplicateGroupCount = 0; // 하위 호환성을 위해 유지
+    if (duplicateRowCount > 0) {
+      console.log(`🚫 [${entity}] Skipped ${duplicateRowCount} duplicate rows → ${allowedRows.length} new rows will be inserted`);
     } else {
-      console.log(`✅ [${entity}] No duplicate invoice groups found → all ${allowedRows.length} rows will be inserted`);
+      console.log(`✅ [${entity}] No duplicate rows found → all ${allowedRows.length} rows will be inserted`);
     }
 
     // 중복 제거된 데이터로 교체
@@ -555,26 +527,23 @@ export async function POST(request: NextRequest) {
     checkTimeout();
 
     // 5. DB에 저장 (배치 처리)
-    const BATCH_SIZE = 50; // 100에서 50으로 감소하여 타임아웃 방지
+    const BATCH_SIZE = 50;
     let totalInserted = 0;
     let totalSkipped = 0;
     const errors: string[] = [];
 
-    // 딜레이 함수
     const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
     try {
       for (let i = 0; i < filteredData.length; i += BATCH_SIZE) {
-        checkTimeout(); // 각 배치 전에 타임아웃 체크
+        checkTimeout();
 
         const batch = filteredData.slice(i, i + BATCH_SIZE);
         const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
         const totalBatches = Math.ceil(filteredData.length / BATCH_SIZE);
 
-        // 재시도 로직 (최대 3번)
         let retries = 3;
         let batchSuccess = false;
-        let lastError: any = null;
 
         while (retries > 0 && !batchSuccess) {
           try {
@@ -584,53 +553,45 @@ export async function POST(request: NextRequest) {
               .select();
 
             if (insertError) {
-              // 중복 에러는 Skip으로 처리하고 재시도하지 않음
               if (insertError.code === '23505') {
                 totalSkipped += batch.length;
                 console.log(`⚠️ 배치 ${batchNumber}/${totalBatches}: 중복 데이터로 Skip`);
-                batchSuccess = true; // 중복은 성공으로 간주
+                batchSuccess = true;
               } else {
-                // 다른 에러는 재시도
-                lastError = insertError;
                 retries--;
                 
                 if (retries > 0) {
                   console.warn(`⚠️ 배치 ${batchNumber}/${totalBatches} 에러 발생, ${retries}번 남았습니다. 200ms 후 재시도...`, insertError.message);
-                  await delay(200); // 실패 시 200ms 대기 후 재시도
+                  await delay(200);
                 } else {
-                  // 재시도 실패
                   const errorMsg = `Batch ${batchNumber}: ${insertError.message}`;
                   errors.push(errorMsg);
                   console.error(`❌ 배치 ${batchNumber}/${totalBatches} 최종 실패:`, insertError);
-                  batchSuccess = true; // 재시도 실패했지만 다음 배치로 진행
+                  batchSuccess = true;
                 }
               }
             } else {
-              // 성공
               totalInserted += data?.length || batch.length;
               console.log(`✅ 배치 ${batchNumber}/${totalBatches} 완료: ${data?.length || batch.length}개 저장`);
               batchSuccess = true;
             }
           } catch (batchError) {
-            lastError = batchError;
             retries--;
             
             if (retries > 0) {
               console.warn(`⚠️ 배치 ${batchNumber}/${totalBatches} 예외 발생, ${retries}번 남았습니다. 200ms 후 재시도...`, (batchError as Error).message);
-              await delay(200); // 실패 시 200ms 대기 후 재시도
+              await delay(200);
             } else {
-              // 재시도 실패
               const errorMsg = `Batch ${batchNumber} failed: ${(batchError as Error).message}`;
               errors.push(errorMsg);
               console.error(`❌ 배치 ${batchNumber}/${totalBatches} 최종 실패:`, batchError);
-              batchSuccess = true; // 재시도 실패했지만 다음 배치로 진행
+              batchSuccess = true;
             }
           }
         }
 
-        // 각 배치 사이 딜레이 (마지막 배치가 아닌 경우)
         if (i + BATCH_SIZE < filteredData.length) {
-          await delay(100); // 100ms 딜레이
+          await delay(100);
         }
       }
     } catch (error) {
@@ -652,7 +613,6 @@ export async function POST(request: NextRequest) {
         .eq('id', historyId);
     } catch (error) {
       console.error('⚠️ History update failed:', error);
-      // 히스토리 업데이트 실패는 치명적이지 않으므로 계속 진행
     }
 
     const spaceReduction = filteredData.length > 0 && rawData.length > 0
@@ -686,7 +646,6 @@ export async function POST(request: NextRequest) {
     const errorMessage = (error as Error).message;
     const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('timeout');
 
-    // 에러 발생 시 히스토리 업데이트
     if (historyId) {
       try {
         const supabase = createServiceClient();
