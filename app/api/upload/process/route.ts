@@ -688,41 +688,67 @@ export async function POST(request: NextRequest) {
     console.log(`📋 [${entity}] Upload has ${transformedData.length} rows across ${invoiceList.length} unique invoices`);
 
     // Step B: DB에서 동일 invoice의 기존 행 조회 → 행 단위 키 Set 생성
+    // ⚠️ Supabase 기본 응답 한도(1000행)를 초과할 수 있으므로 페이지네이션 적용
     const dbExistingKeys = new Set<string>();
 
+    const addDbRowsToKeySet = (rows: any[]) => {
+      rows.forEach((row: any) => {
+        const inv = (row.invoice || '').toString().trim();
+        const lineNum = (row.line_number ?? '').toString().trim();
+        const itemNum = (row.item_number || '').toString().trim();
+        const amount = (parseFloat(row.line_amount_mst) || 0).toFixed(2);
+        // 행 고유 키: line_number가 있으면 우선 사용, 없으면 item_number + amount
+        const rowKey = lineNum
+          ? `${inv}|L:${lineNum}`
+          : `${inv}|I:${itemNum}|A:${amount}`;
+        dbExistingKeys.add(rowKey);
+      });
+    };
+
     if (invoiceList.length > 0) {
-      const DB_BATCH_SIZE = 1000;
+      const INVOICE_BATCH_SIZE = 500; // 인보이스 배치 크기 (줄여서 페이지당 행 수 제어)
+      const PAGE_SIZE = 1000;         // Supabase 페이지 크기
       let totalDbRows = 0;
 
-      for (let i = 0; i < invoiceList.length; i += DB_BATCH_SIZE) {
-        const batchInvoices = invoiceList.slice(i, i + DB_BATCH_SIZE);
-        const batchNum = Math.floor(i / DB_BATCH_SIZE) + 1;
-        const totalBatches = Math.ceil(invoiceList.length / DB_BATCH_SIZE);
-        console.log(`🔍 [${entity}] Querying DB batch ${batchNum}/${totalBatches} (${batchInvoices.length} invoices)...`);
+      for (let i = 0; i < invoiceList.length; i += INVOICE_BATCH_SIZE) {
+        const batchInvoices = invoiceList.slice(i, i + INVOICE_BATCH_SIZE);
+        const batchNum = Math.floor(i / INVOICE_BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(invoiceList.length / INVOICE_BATCH_SIZE);
+        console.log(`🔍 [${entity}] Invoice batch ${batchNum}/${totalBatches} (${batchInvoices.length} invoices) - paginating...`);
 
-        const { data: dbRows, error: dbError } = await supabase
-          .from('sales_data')
-          .select('invoice, line_number, item_number, line_amount_mst')
-          .eq('entity', entity)
-          .in('invoice', batchInvoices);
+        // 페이지네이션: 1000행씩 반복 조회
+        let page = 0;
+        let hasMore = true;
+        let batchRowCount = 0;
 
-        if (dbError) {
-          console.error(`❌ [${entity}] DB query failed (batch ${batchNum}):`, dbError.message);
-        } else if (dbRows && dbRows.length > 0) {
-          totalDbRows += dbRows.length;
-          dbRows.forEach((row: any) => {
-            const inv = (row.invoice || '').toString().trim();
-            const lineNum = (row.line_number ?? '').toString().trim();
-            const itemNum = (row.item_number || '').toString().trim();
-            const amount = (parseFloat(row.line_amount_mst) || 0).toFixed(2);
+        while (hasMore) {
+          const from = page * PAGE_SIZE;
+          const to = from + PAGE_SIZE - 1;
 
-            // 행 고유 키: line_number가 있으면 우선 사용, 없으면 item_number + amount
-            const rowKey = lineNum
-              ? `${inv}|L:${lineNum}`
-              : `${inv}|I:${itemNum}|A:${amount}`;
-            dbExistingKeys.add(rowKey);
-          });
-          console.log(`📊 [${entity}] Batch ${batchNum}: Found ${dbRows.length} existing DB rows`);
+          const { data: pageRows, error: dbError } = await supabase
+            .from('sales_data')
+            .select('invoice, line_number, item_number, line_amount_mst')
+            .eq('entity', entity)
+            .in('invoice', batchInvoices)
+            .range(from, to);
+
+          if (dbError) {
+            console.error(`❌ [${entity}] DB query failed (invoice batch ${batchNum}, page ${page + 1}):`, dbError.message);
+            hasMore = false;
+          } else if (pageRows && pageRows.length > 0) {
+            addDbRowsToKeySet(pageRows);
+            totalDbRows += pageRows.length;
+            batchRowCount += pageRows.length;
+            // 반환된 행이 PAGE_SIZE보다 적으면 마지막 페이지
+            hasMore = pageRows.length === PAGE_SIZE;
+            page++;
+          } else {
+            hasMore = false;
+          }
+        }
+
+        if (batchRowCount > 0) {
+          console.log(`📊 [${entity}] Invoice batch ${batchNum}: Found ${batchRowCount} existing DB rows (${page} page(s))`);
         }
       }
       console.log(`📊 [${entity}] Total DB existing keys: ${dbExistingKeys.size} (from ${totalDbRows} rows)`);
